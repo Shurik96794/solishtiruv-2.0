@@ -148,7 +148,7 @@ function drawRows(){
  const store=f.store.toLocaleLowerCase(),supplier=f.supplier.toLocaleLowerCase();
  const barcodeState=document.getElementById('uprBarcodeFilter')?.value||'all';const arr=all.filter(x=>{
   if(barcodeState!=='all'&&barcodeMatch(x.variantCode).status!==barcodeState)return false;
-  if(q&&![x.tovarId,x.variantCode,x.product].some(v=>String(v??'').toLocaleLowerCase().includes(q)))return false;
+  if(q&&![x.tovarId,x.variantCode,x.product,barcodeDisplay(x)].some(v=>String(v??'').toLocaleLowerCase().includes(q)))return false;
   if(store&&!String(x.store??'').toLocaleLowerCase().includes(store))return false;
   if(supplier&&!String(x.supplier??'').toLocaleLowerCase().includes(supplier)&&!String(x.supplierId??'').toLocaleLowerCase().includes(supplier))return false;
   if(f.from||f.to){const d=uprDateISO(x.date);if(!d||(f.from&&d<f.from)||(f.to&&d>f.to))return false}
