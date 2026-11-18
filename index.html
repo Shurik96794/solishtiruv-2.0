@@ -55,9 +55,25 @@ function bindDidox(){
  const inn=dxLoggedInn,from=document.getElementById('dxFrom').value,to=document.getElementById('dxTo').value;
  if(!inn||!dxPassword){msg.textContent='Avval Didox’ga kiring.';return}
  if(!from||!to||from>to){msg.textContent='Sana oralig‘ini to‘g‘ri kiriting.';return}
- fetchBtn.disabled=true;msg.textContent='Fakturalar o‘qilmoqda…';
- try{const res=await fetch('/api/didox/documents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({inn,password:dxPassword,date_from:from,date_to:to}),credentials:'omit'});const data=await res.json().catch(()=>({}));if(!res.ok)throw Error(data.error||'HTTP '+res.status);dxAccept(data)}
- catch(err){msg.textContent='Didox xatosi: '+err.message}finally{fetchBtn.disabled=false}
+ fetchBtn.disabled=true;
+ let cursor=null,all=[],seen=new Set(),requests=0;
+ try{
+  do{
+   msg.textContent='Didox o‘qilmoqda: '+requests+' ta paket, '+all.length+' ta faktura...';
+   const res=await fetch('/api/didox/documents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({inn,password:dxPassword,date_from:from,date_to:to,cursor}),credentials:'omit'});
+   const data=await res.json().catch(()=>({}));
+   if(!res.ok)throw Error(data.error||'HTTP '+res.status);
+   for(const d of (data.docs||[])){if(d.didox_id&&!seen.has(d.didox_id)){seen.add(d.didox_id);all.push(d)}}
+   cursor=data.next||null;
+   requests++;
+   if(requests>=2000)throw Error('2000 ta paket chegarasi. Davrni qisqartiring.');
+  }while(cursor);
+  dxAccept({docs:all});
+  msg.textContent='Yuklandi: '+all.length+' ta faktura ('+requests+' paket).';
+ }catch(err){
+  if(all.length){dxAccept({docs:all});msg.textContent='Qisman yuklandi: '+all.length+' ta faktura. Xato: '+err.message}
+  else msg.textContent='Didox xatosi: '+err.message;
+ }finally{fetchBtn.disabled=false}
  };
  document.getElementById('dxCsv').onclick=()=>{const cols=['didox_id','f_no','f_sana','supplier','s_inn','buyer','b_inn','doc_status','nm','mxik','bar','q','u','sum_q'],quote=v=>'"'+String(v??'').replace(/"/g,'""')+'"';const lines=[cols.join(',')];dxFiltered().forEach(d=>d.lines.forEach(l=>lines.push(cols.map(k=>quote(Object.prototype.hasOwnProperty.call(l,k)?l[k]:d[k])).join(','))));downloadData('didox_fakturalar.csv','\ufeff'+lines.join('\r\n'),'text/csv;charset=utf-8')};
  dxDraw();
