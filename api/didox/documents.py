@@ -33,6 +33,35 @@ def number(v):
     try:return float(v or 0)
     except (ValueError,TypeError):return 0.0
 
+def status_fields(item, body):
+    """Read status from both list and detail without guessing numeric meanings."""
+    candidates=[item]
+    if isinstance(body,dict):
+        candidates.append(body)
+        for key in ("data","document","doc","result"):
+            part=body.get(key)
+            if isinstance(part,dict):
+                candidates.append(part)
+                if isinstance(part.get("document"),dict):
+                    candidates.append(part["document"])
+    codes=("doc_status","docStatus","status","document_status","documentStatus","state")
+    labels=("status_name","statusName","doc_status_name","docStatusName","status_text","statusText","status_title","statusTitle","state_name")
+    code=None
+    label=""
+    for obj in candidates:
+        for key in codes:
+            val=obj.get(key)
+            if isinstance(val,dict):
+                if not label: label=text(val.get("name") or val.get("title") or val.get("label"))
+                val=val.get("id",val.get("code",val.get("value")))
+            if val is not None and val!="" and code is None and isinstance(val,(str,int,float)):
+                code=val
+        for key in labels:
+            val=obj.get(key)
+            if isinstance(val,str) and val.strip() and not label:
+                label=val.strip()
+    return code,label
+
 def parse_doc(item, body):
     obj=body.get("data",body)
     if isinstance(obj,dict) and "json" in obj:
@@ -63,7 +92,7 @@ def parse_doc(item, body):
     no=text(fd.get("facturano") or fd.get("no"));day=text(fd.get("facturadate") or fd.get("date"))[:10]
     if not no or not day:return None
     contract=obj.get("contractdoc") or {}
-    return {"didox_id":text(item.get("doc_id")),"f_no":no,"f_sana":day,"supplier":text(seller.get("name") or item.get("partnerCompany")),"s_inn":text(obj.get("sellertin") or seller.get("tinorpinfl") or item.get("partnerTin")),"buyer":text(buyer.get("name")),"b_inn":text(obj.get("buyertin") or buyer.get("tinorpinfl") or item.get("usersTaxId")),"b_branch":text(buyer.get("branchname")),"sh_no":text(contract.get("contractno") or contract.get("no")),"sh_sana":text(contract.get("contractdate") or contract.get("date"))[:10],"jami":round(sum(x["sum_q"] for x in lines),2),"doc_status":item.get("doc_status"),"status_text":text(item.get("status_name") or item.get("statusName") or item.get("doc_status_name") or item.get("status_text")),"contract_no":text(contract.get("contractno") or contract.get("no")),"contract_date":text(contract.get("contractdate") or contract.get("date"))[:10],"lines":lines}
+    return {"didox_id":text(item.get("doc_id")),"f_no":no,"f_sana":day,"supplier":text(seller.get("name") or item.get("partnerCompany")),"s_inn":text(obj.get("sellertin") or seller.get("tinorpinfl") or item.get("partnerTin")),"buyer":text(buyer.get("name")),"b_inn":text(obj.get("buyertin") or buyer.get("tinorpinfl") or item.get("usersTaxId")),"b_branch":text(buyer.get("branchname")),"sh_no":text(contract.get("contractno") or contract.get("no")),"sh_sana":text(contract.get("contractdate") or contract.get("date"))[:10],"jami":round(sum(x["sum_q"] for x in lines),2),"doc_status":status_fields(item,body)[0],"status_text":status_fields(item,body)[1],"contract_no":text(contract.get("contractno") or contract.get("no")),"contract_date":text(contract.get("contractdate") or contract.get("date"))[:10],"lines":lines}
 
 def collect_batch(inn, start, end, token, page=1, offset=0, phase=0):
     """Process at most 12 matching details per request, with resumable cursor."""
