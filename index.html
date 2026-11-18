@@ -16,7 +16,7 @@ async function importSupplierExcel(e){
    let wb=XLSX.read(await file.arrayBuffer(),{type:'array'});rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:'',raw:false});
   }
   const normalize=x=>String(x??'').trim().toLowerCase().replace(/[’‘ʻ`']/g,'').replace(/\s+/g,' ');
-  let headerAt=rows.findIndex(r=>r.some(c=>['taminotchi','ta’minotchi','ta'minotchi','main taminotchi nomi'].map(normalize).includes(normalize(c)))&&r.some(c=>['mchj nomi','yuridik korxona nomi','mchj'].includes(normalize(c))));
+  let headerAt=rows.findIndex(r=>r.some(c=>['taminotchi','ta’minotchi',"ta'minotchi",'main taminotchi nomi'].map(normalize).includes(normalize(c)))&&r.some(c=>['mchj nomi','yuridik korxona nomi','mchj'].includes(normalize(c))));
   if(headerAt<0)throw Error('Taminotchi va MCHJ nomi ustunlari topilmadi. Excelning birinchi sarlavha qatorini tekshiring.');
   let head=rows[headerAt].map(normalize),si=head.findIndex(x=>['taminotchi','taminotchi','main taminotchi nomi'].includes(x)),mi=head.findIndex(x=>['mchj nomi','yuridik korxona nomi','mchj'].includes(x));
   let incoming=rows.slice(headerAt+1).filter(r=>String(r[si]??'').trim()).map(r=>({name:String(r[si]).trim(),entity:String(r[mi]??'').trim()}));
