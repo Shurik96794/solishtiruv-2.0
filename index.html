@@ -17,12 +17,13 @@ function didoxPage(){
  return '<div class="panel"><h3>Didox — kiruvchi fakturalar</h3><p class="muted">Faqat o‘qish. STIR va Didox paroli bilan kirish.</p>'+
  '<div class="toolbar"><input id="dxInn" inputmode="numeric" maxlength="9" placeholder="MCHJ STIR (9 raqam)" style="width:210px"><input id="dxPassword" type="password" autocomplete="off" placeholder="Didox paroli" style="width:230px"><button class="primary" id="dxLogin">Didox’ga kirish</button><button class="secondary" id="dxLogout">Chiqish</button></div>'+
  '<div class="toolbar"><select id="dxFirm"><option value="">MCHJ tanlang</option>'+firms.map(x=>'<option value="'+esc(x[0])+'">'+esc(x[1])+' ('+esc(x[0])+')</option>').join('')+'</select><label>Dan <input type="date" id="dxFrom"></label><label>Gacha <input type="date" id="dxTo"></label></div>'+
+ '<div class="toolbar" style="align-items:center"><input id="dxSearchInn" inputmode="numeric" placeholder="🔎 Ta’minotchi STIR bo‘yicha qidirish" style="width:310px;max-width:100%"><label>Faktura sanasi: <input type="date" id="dxSearchFrom"></label><label>— <input type="date" id="dxSearchTo"></label><button type="button" class="secondary" id="dxSearchClear">✕ Qidiruvni tozalash</button></div>'+
  '<div class="toolbar"><button class="primary" id="dxFetch" disabled>↻ Fakturalarni olish</button><button class="secondary" id="dxCsv">↓ CSV eksport</button></div>'+
  '<p class="muted">Parol faqat ushbu ochiq sahifaning vaqtinchalik xotirasida turadi. Sayt yangilansa qayta kirish kerak. Parol va token lokal saqlanmaydi.</p><div class="notice" id="dxMessage">STIR va Didox parolini kiritib, «Didox’ga kirish» tugmasini bosing.</div><div id="dxTable"></div></div>';
 }
 function dxFiltered(){
- const inn=document.getElementById('dxFirm')?.value||'',from=document.getElementById('dxFrom')?.value||'',to=document.getElementById('dxTo')?.value||'';
- return dxDocs.filter(d=>(!inn||String(d.b_inn||'')===inn)&&(!from||String(d.f_sana||'').slice(0,10)>=from)&&(!to||String(d.f_sana||'').slice(0,10)<=to));
+ const inn=document.getElementById('dxFirm')?.value||'',from=document.getElementById('dxSearchFrom')?.value||'',to=document.getElementById('dxSearchTo')?.value||'',supplierInn=(document.getElementById('dxSearchInn')?.value||'').trim();
+ return dxDocs.filter(d=>(!inn||String(d.b_inn||'')===inn)&&(!supplierInn||String(d.s_inn||'').includes(supplierInn))&&(!from||String(d.f_sana||'').slice(0,10)>=from)&&(!to||String(d.f_sana||'').slice(0,10)<=to));
 }
 let dxOpenSuppliers=new Set();
 function dxInvoiceDialog(d){
@@ -68,7 +69,9 @@ function dxAccept(payload){
 }
 function bindDidox(){
  const innInput=document.getElementById('dxInn'),pwInput=document.getElementById('dxPassword'),firm=document.getElementById('dxFirm'),msg=document.getElementById('dxMessage'),fetchBtn=document.getElementById('dxFetch');
- ['dxFirm','dxFrom','dxTo'].forEach(id=>document.getElementById(id).onchange=dxDraw);
+ ['dxFirm','dxFrom','dxTo','dxSearchFrom','dxSearchTo'].forEach(id=>document.getElementById(id).onchange=dxDraw);
+ document.getElementById('dxSearchInn').oninput=dxDraw;
+ document.getElementById('dxSearchClear').onclick=()=>{['dxSearchInn','dxSearchFrom','dxSearchTo'].forEach(id=>document.getElementById(id).value='');dxDraw()};
  firm.onchange=()=>{innInput.value=firm.value;if(dxLoggedInn!==firm.value){dxPassword='';dxLoggedInn='';fetchBtn.disabled=true;msg.textContent='Tanlangan MCHJ uchun qayta kiring.'}dxDraw()};
  document.getElementById('dxLogout').onclick=()=>{dxPassword='';dxLoggedInn='';pwInput.value='';fetchBtn.disabled=true;msg.textContent='Didox sessiyasidan chiqildi.'};
  document.getElementById('dxLogin').onclick=async()=>{
