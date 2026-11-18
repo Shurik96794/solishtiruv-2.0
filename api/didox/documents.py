@@ -65,35 +65,48 @@ def parse_doc(item, body):
     contract=obj.get("contractdoc") or {}
     return {"didox_id":text(item.get("doc_id")),"f_no":no,"f_sana":day,"supplier":text(seller.get("name") or item.get("partnerCompany")),"s_inn":text(obj.get("sellertin") or seller.get("tinorpinfl") or item.get("partnerTin")),"buyer":text(buyer.get("name")),"b_inn":text(obj.get("buyertin") or buyer.get("tinorpinfl") or item.get("usersTaxId")),"b_branch":text(buyer.get("branchname")),"sh_no":text(contract.get("contractno") or contract.get("no")),"sh_sana":text(contract.get("contractdate") or contract.get("date"))[:10],"jami":round(sum(x["sum_q"] for x in lines),2),"doc_status":item.get("doc_status"),"lines":lines}
 
-def collect(inn, start, end, firm):
-    token=text(firm.get("token"))
-    if not token:
-        password=text(firm.get("password"))
-        if not password:raise ApiError("Firma tokeni yoki paroli sozlanmagan")
-        login=request("/v1/auth/"+quote(inn)+"/password/uz",password=password)
-        token=text(login.get("token") or (login.get("data") or {}).get("token") or (login.get("user") or {}).get("token"))
-        if not token:raise ApiError("Didox token qaytarmadi")
-    docs=[];seen=set()
-    # Hard limits protect serverless runtime; incomplete reads return an explicit error.
-    for suffix in ("","&status=60"):
-        for page in range(1,6):
-            result=request("/v2/documents?page="+str(page)+"&limit=100&owner=0"+suffix,token)
-            data=result.get("data") or []
-            if isinstance(data,dict):data=data.get("items") or data.get("documents") or []
-            if not isinstance(data,list):raise ApiError("Didox ro‘yxat formati noma’lum")
-            for item in data:
-                if not isinstance(item,dict):continue
-                docid=text(item.get("doc_id"));dt=text(item.get("doc_date"))[:10]
-                if not docid or docid in seen or text(item.get("doctype")).zfill(3) not in ("001","002","008","023"):continue
-                if start<=dt<=end:
-                    seen.add(docid)
-                    if len(seen)>80:raise ApiError("80 tadan ko‘p faktura: davrni qisqartiring")
-                    detail=request("/v1/documents/"+quote(docid,safe="")+"?owner=0",token)
-                    parsed=parse_doc(item,detail)
-                    if parsed:docs.append(parsed)
-            if len(data)<100:break
-            if page==5:raise ApiError("Sahifalar chegarasi: davrni qisqartiring")
-    return docs
+def collect_batch(inn, start, end, token, page=1, offset=0, phase=0):
+    """Process at most 12 matching details per request, with resumable cursor."""
+    suffix = "" if phase == 0 else "&status=60"
+    result = request("/v2/documents?page="+str(page)+"&limit=100&owner=0"+suffix, token)
+    data = result.get("data") or []
+    if isinstance(data, dict):
+        data = data.get("items") or data.get("documents") or []
+    if not isinstance(data, list):
+        raise ApiError("Didox ro‘yxat formati noma’lum")
+    docs = []
+    checked = 0
+    i = offset
+    while i < len(data):
+        item = data[i]
+        i += 1
+        if not isinstance(item, dict):
+            continue
+        docid = text(item.get("doc_id"))
+        dt = text(item.get("doc_date"))[:10]
+        if not docid or text(item.get("doctype")).zfill(3) not in ("001","002","008","023"):
+            continue
+        if not start <= dt <= end:
+            continue
+        checked += 1
+        try:
+            detail = request("/v1/documents/"+quote(docid,safe="")+"?owner=0", token)
+            parsed = parse_doc(item, detail)
+            if parsed:
+                docs.append(parsed)
+        except ApiError:
+            pass
+        if checked >= 12:
+            break
+    if i < len(data):
+        next_cursor = {"page":page,"offset":i,"phase":phase}
+    elif len(data) == 100:
+        next_cursor = {"page":page+1,"offset":0,"phase":phase}
+    elif phase == 0:
+        next_cursor = {"page":1,"offset":0,"phase":1}
+    else:
+        next_cursor = None
+    return {"docs":docs,"next":next_cursor}
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
@@ -115,7 +128,13 @@ class handler(BaseHTTPRequestHandler):
             first=date.fromisoformat(start);last=date.fromisoformat(end)
             if last<first or (last-first).days>31:raise ValueError("Sana oralig‘i 31 kundan oshmasin")
             token=self.login(inn,password)
-            return self.send_json(200,{"docs":collect(inn,start,end,{"token":token})})
+            cursor=data.get("cursor") or {}
+            page=int(cursor.get("page",1))
+            offset=int(cursor.get("offset",0))
+            phase=int(cursor.get("phase",0))
+            if page<1 or offset<0 or offset>100 or phase not in (0,1):
+                raise ValueError("Cursor noto‘g‘ri")
+            return self.send_json(200,collect_batch(inn,start,end,token,page,offset,phase))
         except (ValueError,KeyError,TypeError):self.send_json(400,{"error":"STIR, parol yoki sana ma’lumotlari noto‘g‘ri"})
         except ApiError as e:self.send_json(502,{"error":str(e)})
         except Exception:self.send_json(500,{"error":"Serverda ichki xatolik"})
