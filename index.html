@@ -9,14 +9,16 @@ function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&l
 <details class="upr-filter" id="uprStorePanel"><summary>▣ Do‘kon <span id="uprStoreLabel">Barcha do‘konlar</span></summary><div class="upr-filter-body"><b>Do‘konni tanlang</b><input id="uprStoreFilter" list="uprStoreOptions" placeholder="Do‘kon nomini yozing..."><datalist id="uprStoreOptions"></datalist><div class="upr-filter-actions"><button type="button" class="secondary" id="uprStoreClear">Tozalash</button><button type="button" class="supplier-add-button" id="uprStoreApply">Qo‘llash</button></div></div></details>
 <details class="upr-filter" id="uprSupplierFilterPanel"><summary>▤ Ta’minotchi <span id="uprSupplierFilterLabel">Barcha ta’minotchilar</span></summary><div class="upr-filter-body"><b>Ta’minotchini tanlang</b><input id="uprSupplierFilter" list="uprSupplierOptions" placeholder="Nomi yoki MAIN ID..."><datalist id="uprSupplierOptions"></datalist><div class="upr-filter-actions"><button type="button" class="secondary" id="uprSupplierFilterClear">Tozalash</button><button type="button" class="supplier-add-button" id="uprSupplierFilterApply">Qo‘llash</button></div></div></details>
 <select id="uprBarcodeFilter" aria-label="Shtrix-kod holati"><option value="all">Barcha shtrix-kodlar</option><option value="missing">Shtrix-kodi yo‘q</option><option value="linked">Shtrix-kodi bor</option><option value="conflict">Tekshirish kerak</option></select><button type="button" class="secondary" id="uprFilterReset">↺ Filtrlarni tozalash</button></div><div class="toolbar" style="align-items:center;margin:6px 0"><details class="upr-help"><summary title="UPR Kirim haqida ma’lumot" aria-label="UPR Kirim haqida ma’lumot">i</summary><div class="upr-help-body"><b>UPR Kirim — ma’lumotnoma</b><p>Excel ma’lumotlari 8 ustunga ajratiladi: Do‘kon nomi, Tovar ID, Variant kodi, Ta’minotchi nomi, Tovar nomi, Soni, Narxi va Kirim sanasi.</p><p>Qidiruv barcha yuklangan qatorlar bo‘yicha ishlaydi. Jadvalda birinchi 300 ta mos qator ko‘rsatiladi.</p><p>Ma’lumotlar shu brauzerda saqlanadi. Excel yuklash mavjud kirimlarni avtomatik o‘chirmaydi.</p></div></details><span id="uprStatus" class="muted" aria-live="polite"></span></div><details id="uprSupplierPanel" style="margin:12px 0;border:1px solid #d9e2ef;border-radius:10px;padding:10px 14px"><summary style="cursor:pointer;font-weight:600;list-style-position:inside">▸ Ta’minotchilarni spravochnikga qo‘shish <span id="uprSupplierBadge" class="muted" style="font-weight:400"></span></summary><div style="padding:12px 0 2px"><div class="toolbar" style="gap:8px;flex-wrap:wrap"><input id="uprSupplierSearch" placeholder="Ta’minotchi ID yoki nomi..." style="flex:1;min-width:190px"><button type="button" class="secondary" id="uprSupplierSelectAll">Barchasini tanlash</button><button type="button" class="secondary" id="uprSupplierClear">Tozalash</button><button type="button" class="supplier-add-button" id="uprSupplierAddSelected">Tanlanganlarni qo‘shish</button><button type="button" class="secondary" id="uprSupplierAddAll">Barcha yangilarni qo‘shish</button></div><div id="uprSupplierSummary" class="muted" style="margin:8px 0"></div><div id="uprSupplierList" style="max-height:280px;overflow:auto"></div></div></details><div id="rows"></div></div>`}else{html=`<div class="panel"><h3>${sections[active][1]}</h3><p>Bo‘lim dastur tuzilmasiga qo‘shilgan. Ma’lumotlar modeli va ishlash qoidalarini kelishib, navbatma-navbat ishga tushiramiz.</p><div class="notice">Hozircha ushbu bo‘limda hisob-kitob va integratsiya funksiyasi yo‘q.</div></div>`}document.getElementById('content').innerHTML=html;if(active===10){bindStoreCompany()}if(active===14){bindDidox()}if(active===12){bindReports()}if(active===9){bindSuppliers()}if(active===8){bindBarcodes()}if(active===3){document.getElementById('uprExcel').onchange=importUprExcel;document.getElementById('uprSearch').oninput=drawRows;bindUprFilters();document.getElementById('uprBarcodeFilter').onchange=drawRows;document.getElementById('uprSupplierSearch').oninput=drawUprSuppliers;document.getElementById('uprSupplierSelectAll').onclick=()=>{uprSupplierSelection=new Set(uprSupplierCandidates().filter(x=>!x.exists).map(x=>x.key));drawUprSuppliers()};document.getElementById('uprSupplierClear').onclick=()=>{uprSupplierSelection.clear();drawUprSuppliers()};document.getElementById('uprSupplierAddSelected').onclick=()=>addUprSuppliers(false);document.getElementById('uprSupplierAddAll').onclick=()=>addUprSuppliers(true);document.getElementById('uprTemplate').onclick=()=>downloadData('UPR_kirim_namuna.csv','Do‘kon nomi,Tovar ID,Variant kodi,Ta’minotchi nomi,Tovar nomi,Soni,Narxi,Kirim sanasi\\r\\nQo‘qon,000123,VAR001,Artel,Muzlatkich,2,1500000,2026-11-18','text/csv;charset=utf-8');drawRows();drawUprSuppliers()}}
+let dxPassword='',dxLoggedInn='';
 const dxKey='solishtiruv2_didox_readonly';
 let dxDocs=[];try{dxDocs=JSON.parse(localStorage.getItem(dxKey)||'[]');if(!Array.isArray(dxDocs))dxDocs=[]}catch(e){dxDocs=[]}
 function didoxPage(){
  const firms=[...new Map((records.storeCompanies||[]).filter(x=>x.inn).map(x=>[String(x.inn),x.company||x.inn])).entries()];
- return '<div class="panel"><h3>Didox — kiruvchi fakturalar</h3><p class="muted">Faqat o‘qish. Fakturalarni tasdiqlash yoki rad etish funksiyasi yo‘q.</p>'+
- '<div class="toolbar"><select id="dxFirm"><option value="">Barcha MCHJ</option>'+firms.map(x=>'<option value="'+esc(x[0])+'">'+esc(x[1])+' ('+esc(x[0])+')</option>').join('')+'</select><label>Dan <input type="date" id="dxFrom"></label><label>Gacha <input type="date" id="dxTo"></label></div>'+
- '<div class="toolbar"><button class="primary" id="dxFetch">↻ Didox’dan fakturalarni olish</button><button class="secondary" id="dxCsv">↓ CSV eksport</button></div>'+
- '<p class="muted">Ulanish avtomatik bajariladi. Kirish uchun maxfiy kalit so‘ralishi mumkin; Didox parolini bu oynaga kiritmang.</p><div class="notice" id="dxMessage">MCHJ va sanani tanlab, fakturalarni olish tugmasini bosing.</div><div id="dxTable"></div></div>';
+ return '<div class="panel"><h3>Didox — kiruvchi fakturalar</h3><p class="muted">Faqat o‘qish. STIR va Didox paroli bilan kirish.</p>'+
+ '<div class="toolbar"><input id="dxInn" inputmode="numeric" maxlength="9" placeholder="MCHJ STIR (9 raqam)" style="width:210px"><input id="dxPassword" type="password" autocomplete="off" placeholder="Didox paroli" style="width:230px"><button class="primary" id="dxLogin">Didox’ga kirish</button><button class="secondary" id="dxLogout">Chiqish</button></div>'+
+ '<div class="toolbar"><select id="dxFirm"><option value="">MCHJ tanlang</option>'+firms.map(x=>'<option value="'+esc(x[0])+'">'+esc(x[1])+' ('+esc(x[0])+')</option>').join('')+'</select><label>Dan <input type="date" id="dxFrom"></label><label>Gacha <input type="date" id="dxTo"></label></div>'+
+ '<div class="toolbar"><button class="primary" id="dxFetch" disabled>↻ Fakturalarni olish</button><button class="secondary" id="dxCsv">↓ CSV eksport</button></div>'+
+ '<p class="muted">Parol faqat ushbu ochiq sahifaning vaqtinchalik xotirasida turadi. Sayt yangilansa qayta kirish kerak. Parol va token lokal saqlanmaydi.</p><div class="notice" id="dxMessage">STIR va Didox parolini kiritib, «Didox’ga kirish» tugmasini bosing.</div><div id="dxTable"></div></div>';
 }
 function dxFiltered(){
  const inn=document.getElementById('dxFirm')?.value||'',from=document.getElementById('dxFrom')?.value||'',to=document.getElementById('dxTo')?.value||'';
@@ -38,23 +40,24 @@ function dxAccept(payload){
  document.getElementById('dxMessage').textContent=valid.length+' faktura qabul qilindi. Jami kesh: '+merged.length;dxDraw();
 }
 function bindDidox(){
+ const innInput=document.getElementById('dxInn'),pwInput=document.getElementById('dxPassword'),firm=document.getElementById('dxFirm'),msg=document.getElementById('dxMessage'),fetchBtn=document.getElementById('dxFetch');
  ['dxFirm','dxFrom','dxTo'].forEach(id=>document.getElementById(id).onchange=dxDraw);
-
- document.getElementById('dxFetch').onclick=async()=>{
- const msg=document.getElementById('dxMessage'),inn=document.getElementById('dxFirm').value,from=document.getElementById('dxFrom').value,to=document.getElementById('dxTo').value;
- if(!inn){msg.textContent='Avval MCHJ tanlang. MCHJlar do‘kon–korxona bog‘lanishidan olinadi.';return}
- if(!from||!to||from>to){msg.textContent='Boshlanish va tugash sanalarini to‘g‘ri kiriting.';return}
- let access=sessionStorage.getItem('dxAccess')||'';
- if(!access){access=prompt('Didox o‘qish xizmati uchun kirish kalitini kiriting (Didox paroli emas):')||'';if(!access)return}
- const btn=document.getElementById('dxFetch');btn.disabled=true;msg.textContent='Didox fakturalari yuklanmoqda…';
- try{
- const p=new URLSearchParams({inn,date_from:from,date_to:to});
- const res=await fetch('/api/didox/documents?'+p,{headers:{'X-Access-Key':access,Accept:'application/json'},credentials:'omit'});
- const body=await res.json().catch(()=>({}));
- if(!res.ok)throw Error(body.error||'HTTP '+res.status);
- sessionStorage.setItem('dxAccess',access);dxAccept(body);
- }catch(err){if(/kalit|ruxsat|401|403/i.test(err.message))sessionStorage.removeItem('dxAccess');msg.textContent='Didox ulanish xatosi: '+err.message}
- finally{btn.disabled=false}
+ firm.onchange=()=>{innInput.value=firm.value;if(dxLoggedInn!==firm.value){dxPassword='';dxLoggedInn='';fetchBtn.disabled=true;msg.textContent='Tanlangan MCHJ uchun qayta kiring.'}dxDraw()};
+ document.getElementById('dxLogout').onclick=()=>{dxPassword='';dxLoggedInn='';pwInput.value='';fetchBtn.disabled=true;msg.textContent='Didox sessiyasidan chiqildi.'};
+ document.getElementById('dxLogin').onclick=async()=>{
+ const inn=innInput.value.trim(),password=pwInput.value;if(!/^\d{9}$/.test(inn)||!password){msg.textContent='9 raqamli STIR va Didox parolini kiriting.';return}
+ const btn=document.getElementById('dxLogin');btn.disabled=true;msg.textContent='Didox login tekshirilmoqda…';
+ try{const res=await fetch('/api/didox/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({inn,password}),credentials:'omit'});const data=await res.json().catch(()=>({}));if(!res.ok)throw Error(data.error||'HTTP '+res.status);
+ dxPassword=password;dxLoggedInn=inn;pwInput.value='';innInput.value=inn;firm.value=inn;fetchBtn.disabled=false;msg.textContent='Didox’ga kirish muvaffaqiyatli. Endi sanani tanlab fakturalarni oling.';dxDraw();
+ }catch(err){dxPassword='';dxLoggedInn='';fetchBtn.disabled=true;msg.textContent='Kirish xatosi: '+err.message}finally{btn.disabled=false}
+ };
+ fetchBtn.onclick=async()=>{
+ const inn=dxLoggedInn,from=document.getElementById('dxFrom').value,to=document.getElementById('dxTo').value;
+ if(!inn||!dxPassword){msg.textContent='Avval Didox’ga kiring.';return}
+ if(!from||!to||from>to){msg.textContent='Sana oralig‘ini to‘g‘ri kiriting.';return}
+ fetchBtn.disabled=true;msg.textContent='Fakturalar o‘qilmoqda…';
+ try{const res=await fetch('/api/didox/documents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({inn,password:dxPassword,date_from:from,date_to:to}),credentials:'omit'});const data=await res.json().catch(()=>({}));if(!res.ok)throw Error(data.error||'HTTP '+res.status);dxAccept(data)}
+ catch(err){msg.textContent='Didox xatosi: '+err.message}finally{fetchBtn.disabled=false}
  };
  document.getElementById('dxCsv').onclick=()=>{const cols=['didox_id','f_no','f_sana','supplier','s_inn','buyer','b_inn','doc_status','nm','mxik','bar','q','u','sum_q'],quote=v=>'"'+String(v??'').replace(/"/g,'""')+'"';const lines=[cols.join(',')];dxFiltered().forEach(d=>d.lines.forEach(l=>lines.push(cols.map(k=>quote(Object.prototype.hasOwnProperty.call(l,k)?l[k]:d[k])).join(','))));downloadData('didox_fakturalar.csv','\ufeff'+lines.join('\r\n'),'text/csv;charset=utf-8')};
  dxDraw();
