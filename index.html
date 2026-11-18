@@ -24,11 +24,27 @@ function dxFiltered(){
  const inn=document.getElementById('dxFirm')?.value||'',from=document.getElementById('dxFrom')?.value||'',to=document.getElementById('dxTo')?.value||'';
  return dxDocs.filter(d=>(!inn||String(d.b_inn||'')===inn)&&(!from||String(d.f_sana||'').slice(0,10)>=from)&&(!to||String(d.f_sana||'').slice(0,10)<=to));
 }
+let dxOpenSuppliers=new Set();
+function dxInvoiceDialog(d){
+ const dlg=document.createElement('dialog');dlg.className='sc-dialog';
+ dlg.innerHTML='<h3>Faktura № '+esc(d.f_no||'')+'</h3><p>'+esc(d.supplier||'')+' · '+esc(d.f_sana||'')+' · '+esc(d.s_inn||'')+'</p><div style="max-height:65vh;overflow:auto"><table><thead><tr><th>Tovar</th><th>MXIK</th><th>Shtrix-kod</th><th>Miqdor</th><th>Narx</th><th>Jami</th></tr></thead><tbody>'+d.lines.map(l=>'<tr><td>'+esc(l.nm||'')+'</td><td>'+esc(l.mxik||'')+'</td><td>'+esc(l.bar||'')+'</td><td>'+esc(l.q??'')+'</td><td>'+esc(l.u??'')+'</td><td>'+esc(l.sum_q??'')+'</td></tr>').join('')+'</tbody></table></div><button class="secondary" id="dxClose">Yopish</button>';
+ document.body.appendChild(dlg);dlg.querySelector('#dxClose').onclick=()=>dlg.close();dlg.onclose=()=>dlg.remove();dlg.showModal();
+}
 function dxDraw(){
- const root=document.getElementById('dxTable');if(!root)return;const docs=dxFiltered();
- root.innerHTML='<p><b>'+docs.length+'</b> faktura · <b>'+docs.reduce((n,d)=>n+d.lines.length,0)+'</b> tovar qatori</p><div style="overflow:auto"><table><thead><tr><th>Sana</th><th>Faktura №</th><th>Sotuvchi</th><th>STIR</th><th>Xaridor STIR</th><th>Summa</th><th>Holat</th><th>Qatorlar</th></tr></thead><tbody>'+
- docs.slice(0,500).map((d,i)=>'<tr><td>'+esc(d.f_sana||'')+'</td><td>'+esc(d.f_no||'')+'</td><td>'+esc(d.supplier||'')+'</td><td>'+esc(d.s_inn||'')+'</td><td>'+esc(d.b_inn||'')+'</td><td>'+esc(d.jami??'')+'</td><td>'+esc(d.doc_status??'')+'</td><td><button class="secondary" data-dx="'+i+'">Ko‘rish ('+d.lines.length+')</button></td></tr>').join('')+'</tbody></table></div>'+(docs.length>500?'<p>Dastlabki 500 ta ko‘rsatildi, eksport barcha qatorlarni oladi.</p>':'');
- root.querySelectorAll('[data-dx]').forEach(b=>b.onclick=()=>{const d=docs[Number(b.dataset.dx)],dlg=document.createElement('dialog');dlg.className='sc-dialog';dlg.innerHTML='<h3>Faktura '+esc(d.f_no||'')+'</h3><div style="max-height:65vh;overflow:auto"><table><thead><tr><th>Tovar</th><th>MXIK</th><th>Shtrix-kod</th><th>Miqdor</th><th>Narx</th><th>Jami</th></tr></thead><tbody>'+d.lines.map(l=>'<tr><td>'+esc(l.nm||'')+'</td><td>'+esc(l.mxik||'')+'</td><td>'+esc(l.bar||'')+'</td><td>'+esc(l.q??'')+'</td><td>'+esc(l.u??'')+'</td><td>'+esc(l.sum_q??'')+'</td></tr>').join('')+'</tbody></table></div><button class="secondary" id="dxClose">Yopish</button>';document.body.appendChild(dlg);dlg.querySelector('#dxClose').onclick=()=>dlg.close();dlg.onclose=()=>dlg.remove();dlg.showModal()});
+ const root=document.getElementById('dxTable');if(!root)return;
+ const docs=dxFiltered(),groups=new Map();
+ docs.forEach((d,i)=>{const key=String(d.s_inn||'').trim()||('nom:'+String(d.supplier||'Noma’lum').trim().toLowerCase());
+ if(!groups.has(key))groups.set(key,{key,name:d.supplier||'Noma’lum ta’minotchi',inn:d.s_inn||'',docs:[],sum:0});
+ const g=groups.get(key);g.docs.push({d,i});g.sum+=Number(d.jami)||0;
+ });
+ const list=[...groups.values()].sort((a,b)=>a.name.localeCompare(b.name,'uz'));
+ root.innerHTML='<p><b>'+list.length+'</b> ta’minotchi · <b>'+docs.length+'</b> faktura · <b>'+docs.reduce((n,d)=>n+d.lines.length,0)+'</b> tovar qatori</p>'+
+ '<div style="overflow:auto"><table><thead><tr><th>Ko‘rish</th><th>Ta’minotchi</th><th>STIR</th><th>Fakturalar</th><th>Jami summa</th></tr></thead><tbody>'+
+ list.map((g,gi)=>'<tr><td><button class="secondary" data-dx-group="'+gi+'" title="Fakturalarni ochish" aria-label="Fakturalarni ochish">'+(dxOpenSuppliers.has(g.key)?'◉':'👁')+'</button></td><td><b>'+esc(g.name)+'</b></td><td>'+esc(g.inn)+'</td><td>'+g.docs.length+' ta</td><td>'+g.sum.toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2})+'</td></tr>'+
+ (dxOpenSuppliers.has(g.key)?'<tr><td colspan="5" style="padding:10px 16px;background:var(--surface,#f7f9fc)"><div style="overflow:auto"><table><thead><tr><th>Sana</th><th>Faktura №</th><th>Xaridor STIR</th><th>Holat</th><th>Summa</th><th>Tovarlar</th></tr></thead><tbody>'+
+ g.docs.map(x=>'<tr><td>'+esc(x.d.f_sana||'')+'</td><td>'+esc(x.d.f_no||'')+'</td><td>'+esc(x.d.b_inn||'')+'</td><td>'+esc(x.d.doc_status??'')+'</td><td>'+esc(x.d.jami??'')+'</td><td><button class="secondary" data-dx-invoice="'+x.i+'">👁 Ko‘rish ('+x.d.lines.length+')</button></td></tr>').join('')+'</tbody></table></div></td></tr>':'')).join('')+'</tbody></table></div>';
+ root.querySelectorAll('[data-dx-group]').forEach(btn=>btn.onclick=()=>{const g=list[Number(btn.dataset.dxGroup)];if(dxOpenSuppliers.has(g.key))dxOpenSuppliers.delete(g.key);else dxOpenSuppliers.add(g.key);dxDraw()});
+ root.querySelectorAll('[data-dx-invoice]').forEach(btn=>btn.onclick=()=>dxInvoiceDialog(docs[Number(btn.dataset.dxInvoice)]));
 }
 function dxAccept(payload){
  const list=Array.isArray(payload)?payload:payload?.docs||payload?.documents;
