@@ -37,6 +37,37 @@ function ehfTransfer(d){
  localStorage.setItem(ehfKey,JSON.stringify(ehfDocs));
  return true;
 }
+const ehfMatchKey='solishtiruv2_nomenclature_map';
+let ehfMappings={};try{ehfMappings=JSON.parse(localStorage.getItem(ehfMatchKey)||'{}')||{}}catch(e){ehfMappings={}}
+function ehfNormalize(v){return String(v||'').normalize('NFKC').toLocaleUpperCase().replace(/[\u2010-\u2015]/g,'-').replace(/[^A-ZА-ЯЁЎҚҒҲІЇЄ0-9]+/gi,' ').replace(/\s+/g,' ').trim()}
+function ehfMapKey(d,l){return [d.s_inn||'',l.mxik||'',ehfNormalize(l.nm)].join('|')}
+function ehfCandidates(){
+ const items=new Map();
+ for(const row of records[3]||[]){
+  const name=String(row.product||'').trim(),id=String(row.tovarId||'').trim(),pc=String(row.variantCode||'').trim();
+  if(!name)continue;
+  const key=id+'|'+pc+'|'+ehfNormalize(name);
+  if(!items.has(key))items.set(key,{name,id,pc,barcode:barcodeMatch(pc).barcode||''});
+ }
+ return [...items.values()];
+}
+function ehfResolve(d,l){
+ const key=ehfMapKey(d,l),all=ehfCandidates(),saved=ehfMappings[key];
+ const marked=Array.isArray(l.kiz)&&l.kiz.length>0;
+ if(saved){const item=all.find(x=>x.id===saved.id&&x.pc===saved.pc);if(item)return {item,type:marked?'Markirovkali':'Markirovka aniqlanmagan',state:'Tasdiqlangan moslik',barcode:marked?(l.bar||item.barcode):(item.barcode||l.bar||'')}}
+ const norm=ehfNormalize(l.nm),matches=all.filter(x=>ehfNormalize(x.name)===norm);
+ const item=matches.length===1?matches[0]:null;
+ return {item,type:marked?'Markirovkali':'Markirovka aniqlanmagan',state:item?'Nom bo‘yicha mos':matches.length?'Bir nechta moslik':'Moslik topilmadi',barcode:item?(marked?(l.bar||item.barcode):(item.barcode||l.bar||'')):(l.bar||'')};
+}
+function ehfMatchDialog(d){
+ const dlg=document.createElement('dialog');dlg.className='sc-dialog';dlg.style.cssText='width:min(1250px,96vw);max-width:96vw;max-height:94vh;padding:22px';
+ const all=ehfCandidates();
+ dlg.innerHTML='<h3>🔗 Didox → UPR nomenklatura moslashtirish</h3><p>'+esc(d.supplier||'')+' · Faktura № '+esc(d.f_no||'')+'</p><p class="muted">Markirovkali tovarlarda Data Matrix (KIZ) alohida saqlanadi. KIZ bo‘lmasa tovar markirovkasiz deb taxmin qilinmaydi. Noma’lum moslik avtomatik tasdiqlanmaydi.</p><div style="overflow:auto;max-height:65vh"><table><thead><tr><th>Didox mahsuloti</th><th>MXIK</th><th>Turi</th><th>UPR nomenklaturasi</th><th>Shtrix-kod / GTIN</th><th>Moslik</th></tr></thead><tbody>'+
+ (d.lines||[]).map((l,i)=>{const m=ehfResolve(d,l);return '<tr><td>'+esc(l.nm||'')+'</td><td>'+esc(l.mxik||'')+'</td><td>'+esc(m.type)+'</td><td><select data-ehf-map="'+i+'" style="max-width:310px"><option value="">— Moslik tanlanmagan —</option>'+all.map((x,j)=>'<option value="'+j+'" '+(m.item&&x.id===m.item.id&&x.pc===m.item.pc?'selected':'')+'>'+esc(x.name)+' ('+esc(x.pc||x.id)+')</option>').join('')+'</select></td><td>'+esc(m.barcode||'—')+'</td><td>'+esc(m.state)+'</td></tr>'}).join('')+'</tbody></table></div><div class="toolbar" style="margin-top:16px"><button class="primary" id="ehfMatchSave">Mosliklarni saqlash</button><button class="secondary" id="ehfMatchClose">Yopish</button></div>';
+ document.body.appendChild(dlg);dlg.querySelector('#ehfMatchClose').onclick=()=>dlg.close();dlg.onclose=()=>dlg.remove();
+ dlg.querySelector('#ehfMatchSave').onclick=()=>{dlg.querySelectorAll('[data-ehf-map]').forEach(sel=>{const l=d.lines[Number(sel.dataset.ehfMap)],key=ehfMapKey(d,l);if(sel.value!==''){const x=all[Number(sel.value)];ehfMappings[key]={id:x.id,pc:x.pc}}else delete ehfMappings[key]});localStorage.setItem(ehfMatchKey,JSON.stringify(ehfMappings));dlg.close();ehfDraw()};
+ dlg.showModal();
+}
 function ehfPage(){
  return '<div class="panel ehf-workspace"><div class="ehf-heading"><div><h2>📥 1C / EHF kirimlari</h2><p class="muted">Didox’dan avtomatik sinxronlangan kiruvchi fakturalar — xaridor MCHJ kesimida</p></div><span class="ehf-pill">Lokal reyestr · 1Cga ulanmagan</span></div>'+
  '<div class="ehf-filters"><input id="ehfSearch" placeholder="🔎 Xaridor MCHJ, STIR, sotuvchi yoki faktura №..." style="flex:2;min-width:230px"><label>Dan <input type="date" id="ehfFrom"></label><label>Gacha <input type="date" id="ehfTo"></label><select id="ehfStatus"><option value="">Barcha holatlar</option><option value="signed">Imzolangan</option><option value="pending">Kutilmoqda</option><option value="rejected">Rad etilgan</option><option value="unknown">Aniqlanmagan</option></select><button class="secondary" id="ehfClear">Tozalash</button></div>'+
@@ -61,11 +92,11 @@ function ehfDraw(){
  const chosen=arr.find(d=>ehfId(d)===ehfSelectedId)||arr[0];
  const detail=document.getElementById('ehfDetail');if(!chosen){detail.innerHTML='<p class="muted" style="padding:24px">Hozircha faktura yo‘q. Didox bo‘limidan fakturani EHF kirimiga o‘tkazing.</p>';return}
  ehfSelectedId=ehfId(chosen);
- detail.innerHTML='<div class="ehf-detail-grid"><section class="ehf-detail-card"><h3>▤ Faktura № '+esc(chosen.f_no||'')+'</h3><p><b>Qabul qiluvchi:</b> '+esc(names.get(String(chosen.b_inn))||chosen.buyer||'—')+'<small>STIR: '+esc(chosen.b_inn||'')+'</small></p><p><b>Sotuvchi:</b> '+esc(chosen.supplier||'—')+'<small>STIR: '+esc(chosen.s_inn||'')+'</small></p><p><b>Sana:</b> '+esc(chosen.f_sana||'')+'</p><p><b>Jami:</b> '+money(chosen.jami)+' so‘m</p><p><b>Didox:</b> '+esc(dxStatus(chosen).label)+'</p><button class="secondary" id="ehfFullView">👁 To‘liq fakturani ko‘rish</button></section>'+
+ detail.innerHTML='<div class="ehf-detail-grid"><section class="ehf-detail-card"><h3>▤ Faktura № '+esc(chosen.f_no||'')+'</h3><p><b>Qabul qiluvchi:</b> '+esc(names.get(String(chosen.b_inn))||chosen.buyer||'—')+'<small>STIR: '+esc(chosen.b_inn||'')+'</small></p><p><b>Sotuvchi:</b> '+esc(chosen.supplier||'—')+'<small>STIR: '+esc(chosen.s_inn||'')+'</small></p><p><b>Sana:</b> '+esc(chosen.f_sana||'')+'</p><p><b>Jami:</b> '+money(chosen.jami)+' so‘m</p><p><b>Didox:</b> '+esc(dxStatus(chosen).label)+'</p><button class="secondary" id="ehfFullView">👁 To‘liq fakturani ko‘rish</button> <button class="primary" id="ehfMatchOpen">🔗 Nomenklatura / shtrix-kod</button></section>'+
  '<section class="ehf-detail-card ehf-product-card"><h3>📦 Tovar ma’lumotlari ('+(chosen.lines||[]).length+' ta)</h3><div class="ehf-table-wrap"><table class="ehf-table"><thead><tr><th>№</th><th>Mahsulot nomi</th><th>MXIK</th><th>Shtrix-kod</th><th>O‘lchov birligi</th><th>Miqdor</th><th>Birlik narxi (QQS bilan)</th><th>Jami (QQS bilan)</th></tr></thead><tbody>'+
  (chosen.lines||[]).map((l,i)=>'<tr><td>'+(i+1)+'</td><td>'+esc(l.nm||'')+'</td><td>'+esc(l.mxik||'')+'</td><td>'+esc(l.bar||'')+'</td><td>'+esc(l.unit||'')+'</td><td>'+esc(l.q??'')+'</td><td>'+money(l.u)+'</td><td>'+money(l.sum_q)+'</td></tr>').join('')+
  '</tbody></table></div><div class="ehf-detail-total">Jami: '+money(chosen.jami)+' so‘m</div></section></div>';
- document.getElementById('ehfFullView').onclick=()=>dxInvoiceDialog(chosen);
+ document.getElementById('ehfFullView').onclick=()=>dxInvoiceDialog(chosen);document.getElementById('ehfMatchOpen').onclick=()=>ehfMatchDialog(chosen);
 }
 function ehfExport(){
  const header=['Xaridor MCHJ','Xaridor STIR','Sotuvchi','Sotuvchi STIR','Faktura №','Sana','Didox holati','Tovar','MXIK','Shtrix-kod','O‘lchov birligi','Miqdor','Birlik narxi QQS bilan','Jami QQS bilan'];
