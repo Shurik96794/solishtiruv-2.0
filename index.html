@@ -158,25 +158,26 @@ function bindUprFilters(){
  const byId=id=>document.getElementById(id);
  const apply=(kind)=>{
   if(kind==='date'){const from=byId('uprDateFrom').value,to=byId('uprDateTo').value;if(from&&to&&from>to){alert('Boshlanish sanasi tugash sanasidan keyin bo‘lishi mumkin emas');return}uprAppliedFilters.from=from;uprAppliedFilters.to=to;byId('uprDatePanel').open=false}
-  if(kind==='store'){uprAppliedFilters.stores=[...byId('uprStoreOptions').querySelectorAll('input[type=checkbox]:checked')].map(x=>x.value);uprAppliedFilters.store='';byId('uprStorePanel').open=false}
+  if(kind==='store'){uprAppliedFilters.stores=[...uprStoreDraft];uprAppliedFilters.store='';byId('uprStorePanel').open=false}
   if(kind==='supplier'){uprAppliedFilters.supplier=byId('uprSupplierFilter').value.trim();byId('uprSupplierFilterPanel').open=false}
   drawRows();
  };
  ['uprDatePanel','uprStorePanel','uprSupplierFilterPanel'].forEach(id=>byId(id).addEventListener('toggle',()=>{if(byId(id).open)['uprDatePanel','uprStorePanel','uprSupplierFilterPanel'].filter(other=>other!==id).forEach(other=>byId(other).open=false)}));
  byId('uprDateApply').onclick=()=>apply('date');byId('uprStoreApply').onclick=()=>apply('store');byId('uprSupplierFilterApply').onclick=()=>apply('supplier');
  byId('uprDateClear').onclick=()=>{byId('uprDateFrom').value='';byId('uprDateTo').value='';apply('date')};
- byId('uprStoreClear').onclick=()=>{byId('uprStoreFilter').value='';uprAppliedFilters.stores=[];uprAppliedFilters.store='';byId('uprStorePanel').open=false;drawRows();uprRefreshFilterOptions()};
+ byId('uprStoreClear').onclick=()=>{byId('uprStoreFilter').value='';uprAppliedFilters.stores=[];uprStoreDraft.clear();uprAppliedFilters.store='';byId('uprStorePanel').open=false;drawRows();uprRefreshFilterOptions()};
  byId('uprSupplierFilterClear').onclick=()=>{byId('uprSupplierFilter').value='';apply('supplier')};
  byId('uprFilterReset').onclick=()=>{byId('uprBarcodeFilter').value='all';uprAppliedFilters={from:'',to:'',store:'',supplier:''};['uprDateFrom','uprDateTo','uprStoreFilter','uprSupplierFilter','uprSearch'].forEach(id=>byId(id).value='');drawRows()};
- byId('uprStoreFilter').oninput=uprRefreshFilterOptions;byId('uprStoreSelectAll').onclick=()=>{byId('uprStoreOptions').querySelectorAll('input[type=checkbox]').forEach(x=>x.checked=true)};byId('uprStoreSelectNone').onclick=()=>{byId('uprStoreOptions').querySelectorAll('input[type=checkbox]').forEach(x=>x.checked=false)};
+ byId('uprStoreOptions').onchange=e=>{if(e.target.matches('input[type=checkbox]')){if(e.target.checked)uprStoreDraft.add(e.target.value);else uprStoreDraft.delete(e.target.value)}};byId('uprStoreFilter').oninput=uprRefreshFilterOptions;byId('uprStoreSelectAll').onclick=()=>{byId('uprStoreOptions').querySelectorAll('input[type=checkbox]').forEach(x=>{x.checked=true;uprStoreDraft.add(x.value)})};byId('uprStoreSelectNone').onclick=()=>{byId('uprStoreOptions').querySelectorAll('input[type=checkbox]').forEach(x=>{x.checked=false;uprStoreDraft.delete(x.value)})};
  byId('uprSupplierFilter').onkeydown=e=>{if(e.key==='Enter')apply('supplier')};
 }
+let uprStoreDraft=new Set();
 function uprRefreshFilterOptions(){
  const all=records[3]||[];
  const target=document.getElementById('uprStoreOptions');
  if(target){
   const query=(document.getElementById('uprStoreFilter')?.value||'').trim().toLocaleLowerCase();
-  const selected=new Set(uprAppliedFilters.stores||[]);
+  const selected=uprStoreDraft;
   target.innerHTML=[...new Set(all.map(x=>String(x.store??'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b)).filter(n=>n.toLocaleLowerCase().includes(query)).map(n=>'<label style="display:flex;align-items:center;gap:8px;padding:5px 0"><input type="checkbox" value="'+esc(n)+'" '+(selected.has(n)?'checked':'')+'>'+esc(n)+'</label>').join('')||'<p class="muted">Do‘kon topilmadi</p>';
  }
  const supplier=document.getElementById('uprSupplierOptions');
