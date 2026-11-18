@@ -96,26 +96,32 @@ def collect(inn, start, end, firm):
     return docs
 
 class handler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        if urlparse(self.path).path!="/api/didox/documents":
+    def do_POST(self):
+        path=urlparse(self.path).path
+        if path not in ("/api/didox/login","/api/didox/documents"):
             return self.send_json(404,{"error":"Manzil topilmadi"})
-        secret=os.environ.get("DIDOX_ACCESS_KEY","")
-        provided=self.headers.get("X-Access-Key","")
-        if not secret or not hmac.compare_digest(secret,provided):
-            return self.send_json(403,{"error":"Kirish kaliti noto‘g‘ri yoki server sozlanmagan"})
         try:
-            p=parse_qs(urlparse(self.path).query)
-            inn=p.get("inn",[""])[0];start=p.get("date_from",[""])[0];end=p.get("date_to",[""])[0]
-            if not re.fullmatch(r"\d{9}",inn):raise ValueError("MCHJ STIR 9 raqam bo‘lishi kerak")
-            a=date.fromisoformat(start);b=date.fromisoformat(end)
-            if b<a or (b-a).days>31:raise ValueError("Sana oralig‘i 31 kundan oshmasin")
-            firms=json.loads(os.environ.get("DIDOX_FIRMS_JSON","{}"))
-            if inn not in firms:raise ValueError("Ushbu STIR serverda sozlanmagan")
-            docs=collect(inn,start,end,firms[inn])
-            self.send_json(200,{"docs":docs})
-        except (ValueError,KeyError) as e:self.send_json(400,{"error":str(e)})
+            length=int(self.headers.get("Content-Length","0"))
+            if length<=0 or length>4096:raise ValueError("So‘rov hajmi noto‘g‘ri")
+            data=json.loads(self.rfile.read(length))
+            inn=text(data.get("inn"));password=data.get("password")
+            if not re.fullmatch(r"\d{9}",inn):raise ValueError("STIR 9 raqamdan iborat bo‘lishi kerak")
+            if not isinstance(password,str) or not password:raise ValueError("Didox parolini kiriting")
+            if path.endswith("/login"):
+                token=self.login(inn,password)
+                if not token:raise ApiError("Didox token qaytarmadi")
+                return self.send_json(200,{"ok":True,"inn":inn})
+            start=text(data.get("date_from"));end=text(data.get("date_to"))
+            first=date.fromisoformat(start);last=date.fromisoformat(end)
+            if last<first or (last-first).days>31:raise ValueError("Sana oralig‘i 31 kundan oshmasin")
+            token=self.login(inn,password)
+            return self.send_json(200,{"docs":collect(inn,start,end,{"token":token})})
+        except (ValueError,KeyError,TypeError):self.send_json(400,{"error":"STIR, parol yoki sana ma’lumotlari noto‘g‘ri"})
         except ApiError as e:self.send_json(502,{"error":str(e)})
-        except Exception:self.send_json(500,{"error":"Serverda ichki xatolik yuz berdi"})
+        except Exception:self.send_json(500,{"error":"Serverda ichki xatolik"})
+    def login(self,inn,password):
+        login=request("/v1/auth/"+quote(inn)+"/password/uz",password=password)
+        return text(login.get("token") or (login.get("data") or {}).get("token") or (login.get("user") or {}).get("token"))
     def send_json(self,status,data):
         raw=json.dumps(data,ensure_ascii=False).encode("utf-8")
         self.send_response(status)
