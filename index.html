@@ -15,8 +15,8 @@ function didoxPage(){
  const firms=[...new Map((records.storeCompanies||[]).filter(x=>x.inn).map(x=>[String(x.inn),x.company||x.inn])).entries()];
  return '<div class="panel"><h3>Didox — kiruvchi fakturalar</h3><p class="muted">Faqat o‘qish. Fakturalarni tasdiqlash yoki rad etish funksiyasi yo‘q.</p>'+
  '<div class="toolbar"><select id="dxFirm"><option value="">Barcha MCHJ</option>'+firms.map(x=>'<option value="'+esc(x[0])+'">'+esc(x[1])+' ('+esc(x[0])+')</option>').join('')+'</select><label>Dan <input type="date" id="dxFrom"></label><label>Gacha <input type="date" id="dxTo"></label></div>'+
- '<div class="toolbar"><input type="url" id="dxUrl" placeholder="Python API manzili (HTTPS)" style="flex:1;min-width:250px"><button class="primary" id="dxFetch">↻ Fakturalarni olish</button><label class="supplier-upload-button">JSON yuklash<input type="file" id="dxFile" accept=".json" hidden></label><button class="secondary" id="dxCsv">↓ CSV eksport</button></div>'+
- '<p class="muted">Didox paroli yoki tokenini bu sahifaga kiritmang. Jonli ulanish uchun alohida himoyalangan Python API kerak. JSON import hozirdan ishlaydi.</p><div class="notice" id="dxMessage">Tayyor. Hujjatlarni yuklang yoki API manzilini kiriting.</div><div id="dxTable"></div></div>';
+ '<div class="toolbar"><button class="primary" id="dxFetch">↻ Didox’dan fakturalarni olish</button><button class="secondary" id="dxCsv">↓ CSV eksport</button></div>'+
+ '<p class="muted">Ulanish avtomatik bajariladi. Kirish uchun maxfiy kalit so‘ralishi mumkin; Didox parolini bu oynaga kiritmang.</p><div class="notice" id="dxMessage">MCHJ va sanani tanlab, fakturalarni olish tugmasini bosing.</div><div id="dxTable"></div></div>';
 }
 function dxFiltered(){
  const inn=document.getElementById('dxFirm')?.value||'',from=document.getElementById('dxFrom')?.value||'',to=document.getElementById('dxTo')?.value||'';
@@ -39,12 +39,23 @@ function dxAccept(payload){
 }
 function bindDidox(){
  ['dxFirm','dxFrom','dxTo'].forEach(id=>document.getElementById(id).onchange=dxDraw);
- document.getElementById('dxFile').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{dxAccept(JSON.parse(await f.text()))}catch(err){document.getElementById('dxMessage').textContent='Import xatosi: '+err.message}e.target.value=''};
- document.getElementById('dxFetch').onclick=async()=>{const base=document.getElementById('dxUrl').value.trim().replace(/\/$/,'');const msg=document.getElementById('dxMessage');if(!base){msg.textContent='Avval Python API manzilini kiriting.';return}if(!/^https:\/\//i.test(base)&&!/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(base)){msg.textContent='Faqat HTTPS yoki lokal localhost API manziliga ruxsat beriladi.';return}
- const btn=document.getElementById('dxFetch');btn.disabled=true;msg.textContent='Fakturalar yuklanmoqda…';
- try{const p=new URLSearchParams();const inn=document.getElementById('dxFirm').value,from=document.getElementById('dxFrom').value,to=document.getElementById('dxTo').value;if(inn)p.set('inn',inn);if(from)p.set('date_from',from);if(to)p.set('date_to',to);
- const res=await fetch(base+'/api/didox/documents?'+p,{headers:{Accept:'application/json'},credentials:'omit'});if(!res.ok)throw Error('HTTP '+res.status);dxAccept(await res.json())}
- catch(err){msg.textContent='API ulanish xatosi: '+err.message+'. HTTPS/CORS yoki Python xizmati holatini tekshiring.'}finally{btn.disabled=false}};
+
+ document.getElementById('dxFetch').onclick=async()=>{
+ const msg=document.getElementById('dxMessage'),inn=document.getElementById('dxFirm').value,from=document.getElementById('dxFrom').value,to=document.getElementById('dxTo').value;
+ if(!inn){msg.textContent='Avval MCHJ tanlang. MCHJlar do‘kon–korxona bog‘lanishidan olinadi.';return}
+ if(!from||!to||from>to){msg.textContent='Boshlanish va tugash sanalarini to‘g‘ri kiriting.';return}
+ let access=sessionStorage.getItem('dxAccess')||'';
+ if(!access){access=prompt('Didox o‘qish xizmati uchun kirish kalitini kiriting (Didox paroli emas):')||'';if(!access)return}
+ const btn=document.getElementById('dxFetch');btn.disabled=true;msg.textContent='Didox fakturalari yuklanmoqda…';
+ try{
+ const p=new URLSearchParams({inn,date_from:from,date_to:to});
+ const res=await fetch('/api/didox/documents?'+p,{headers:{'X-Access-Key':access,Accept:'application/json'},credentials:'omit'});
+ const body=await res.json().catch(()=>({}));
+ if(!res.ok)throw Error(body.error||'HTTP '+res.status);
+ sessionStorage.setItem('dxAccess',access);dxAccept(body);
+ }catch(err){if(/kalit|ruxsat|401|403/i.test(err.message))sessionStorage.removeItem('dxAccess');msg.textContent='Didox ulanish xatosi: '+err.message}
+ finally{btn.disabled=false}
+ };
  document.getElementById('dxCsv').onclick=()=>{const cols=['didox_id','f_no','f_sana','supplier','s_inn','buyer','b_inn','doc_status','nm','mxik','bar','q','u','sum_q'],quote=v=>'"'+String(v??'').replace(/"/g,'""')+'"';const lines=[cols.join(',')];dxFiltered().forEach(d=>d.lines.forEach(l=>lines.push(cols.map(k=>quote(Object.prototype.hasOwnProperty.call(l,k)?l[k]:d[k])).join(','))));downloadData('didox_fakturalar.csv','\ufeff'+lines.join('\r\n'),'text/csv;charset=utf-8')};
  dxDraw();
 }
