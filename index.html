@@ -250,7 +250,7 @@ function editStoreCompany(key){
  '<label>Do‘kon nomi<input name="storeName" required value="'+esc(current?.storeName||'')+'" placeholder="Yangi yoki mavjud do‘kon nomi"></label>'+
  '<label>MCHJ nomi<input name="company" required value="'+esc(current?.company||'')+'"></label>'+
  '<label>STIR<input name="inn" required value="'+esc(current?.inn||'')+'" inputmode="numeric"></label>'+
- '<label>Faoliyat turi</label><div class="sc-activity-line"><input name="type" list="scActivitySuggestions" required value="'+esc(current?.type||'')+'" placeholder="Faoliyat turini tanlang"><button type="button" id="scNewActivity" class="secondary">＋ Yangi faoliyat turi</button></div><datalist id="scActivitySuggestions">'+typeOptions+'</datalist>'
+ '<label>Faoliyat turi</label><div class="sc-activity-line"><input name="type" list="scActivitySuggestions" required value="'+esc(current?.type||'')+'" placeholder="Faoliyat turini tanlang"><button type="button" id="scNewActivity" class="secondary">＋ Yangi faoliyat turi</button></div><datalist id="scActivitySuggestions">'+typeOptions+'</datalist>'+ 
  '<p class="muted sc-dialog-note">Yangi faoliyat turini yozsangiz, u avtomatik spravochnikga qo‘shiladi. Do‘kon nomini ham shu yerda kiritish yoki o‘zgartirish mumkin.</p>'+
  '<div class="sc-dialog-actions"><button type="button" id="scEditCancel" class="secondary">Bekor qilish</button><button type="submit">Saqlash</button></div></form>';
  document.body.appendChild(dlg);
