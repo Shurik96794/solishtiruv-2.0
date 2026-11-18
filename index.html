@@ -17,6 +17,18 @@ let dxDocs=[];try{dxDocs=JSON.parse(localStorage.getItem(dxKey)||'[]');if(!Array
 const ehfKey='solishtiruv2_ehf_kirim';
 let ehfDocs=[];try{ehfDocs=JSON.parse(localStorage.getItem(ehfKey)||'[]');if(!Array.isArray(ehfDocs))ehfDocs=[]}catch(e){ehfDocs=[]}
 function ehfId(d){return String(d.b_inn||'')+'|'+String(d.didox_id||d.f_no+'|'+d.f_sana)}
+function ehfSyncFromDidox(){
+ const all=Array.isArray(dxDocs)?dxDocs:[];
+ const byId=new Map(ehfDocs.map(d=>[ehfId(d),d]));
+ let added=0,updated=0,skipped=0;
+ for(const d of all){
+  if(!d||!d.b_inn||!d.s_inn||!d.f_no||!Array.isArray(d.lines)||!d.lines.length){skipped++;continue}
+  const id=ehfId(d),old=byId.get(id);
+  if(old){byId.set(id,{...old,...d});updated++}else{byId.set(id,d);added++}
+ }
+ if(added||updated){const merged=[...byId.values()];localStorage.setItem(ehfKey,JSON.stringify(merged));ehfDocs=merged}
+ return {added,updated,skipped};
+}
 function ehfTransfer(d){
  if(!d||!d.b_inn||!d.s_inn||!d.f_no||!Array.isArray(d.lines)||!d.lines.length)throw Error('Faktura rekvizitlari yoki tovarlari to‘liq emas');
  const id=ehfId(d),existing=ehfDocs.findIndex(x=>ehfId(x)===id);
@@ -26,7 +38,7 @@ function ehfTransfer(d){
  return true;
 }
 function ehfPage(){
- return '<div class="panel ehf-workspace"><div class="ehf-heading"><div><h2>📥 1C / EHF kirimlari</h2><p class="muted">Didox’dan o‘tkazilgan kiruvchi fakturalar — xaridor MCHJ kesimida</p></div><span class="ehf-pill">Lokal reyestr · 1Cga ulanmagan</span></div>'+
+ return '<div class="panel ehf-workspace"><div class="ehf-heading"><div><h2>📥 1C / EHF kirimlari</h2><p class="muted">Didox’dan avtomatik sinxronlangan kiruvchi fakturalar — xaridor MCHJ kesimida</p></div><span class="ehf-pill">Lokal reyestr · 1Cga ulanmagan</span></div>'+
  '<div class="ehf-filters"><input id="ehfSearch" placeholder="🔎 Xaridor MCHJ, STIR, sotuvchi yoki faktura №..." style="flex:2;min-width:230px"><label>Dan <input type="date" id="ehfFrom"></label><label>Gacha <input type="date" id="ehfTo"></label><select id="ehfStatus"><option value="">Barcha holatlar</option><option value="signed">Imzolangan</option><option value="pending">Kutilmoqda</option><option value="rejected">Rad etilgan</option><option value="unknown">Aniqlanmagan</option></select><button class="secondary" id="ehfClear">Tozalash</button></div>'+
  '<div class="ehf-actions"><button class="primary" id="ehfOpenDidox">📄 Didox fakturalari</button><button class="secondary" id="ehfCsv">↓ CSV eksport</button><div id="ehfStats" class="ehf-stats"></div></div>'+
  '<div id="ehfTable"></div><div id="ehfDetail"></div></div>';
@@ -34,6 +46,7 @@ function ehfPage(){
 let ehfSelectedId='';
 function ehfDraw(){
  const root=document.getElementById('ehfTable');if(!root)return;
+ try{ehfSyncFromDidox()}catch(err){root.textContent='EHF sinxronlash xatosi: '+err.message;return}
  const q=(document.getElementById('ehfSearch')?.value||'').toLocaleLowerCase().trim();
  const from=document.getElementById('ehfFrom')?.value||'',to=document.getElementById('ehfTo')?.value||'',status=document.getElementById('ehfStatus')?.value||'';
  const names=new Map((records.storeCompanies||[]).filter(x=>x.inn).map(x=>[String(x.inn),x.company||'']));
@@ -124,7 +137,8 @@ function dxAccept(payload){
  const m=new Map(dxDocs.map(d=>[String(d.b_inn||'')+'|'+String(d.didox_id||d.f_no+'|'+d.f_sana),d]));
  valid.forEach(d=>m.set(String(d.b_inn||'')+'|'+String(d.didox_id||d.f_no+'|'+d.f_sana),d));
  const merged=[...m.values()];localStorage.setItem(dxKey,JSON.stringify(merged));dxDocs=merged;
- document.getElementById('dxMessage').textContent=valid.length+' faktura qabul qilindi. Jami kesh: '+merged.length;dxDraw();
+ let note='';try{const result=ehfSyncFromDidox();note=' · EHF kirimlari: '+result.added+' yangi, '+result.updated+' yangilandi'+(result.skipped?' · '+result.skipped+' to‘liq bo‘lmagan hujjat o‘tkazilmadi':'')}catch(err){note=' · EHF sinxronlash xatosi: '+err.message}
+ document.getElementById('dxMessage').textContent=valid.length+' faktura qabul qilindi. Jami kesh: '+merged.length+note;dxDraw();
 }
 function bindDidox(){
  const innInput=document.getElementById('dxInn'),pwInput=document.getElementById('dxPassword'),firm=document.getElementById('dxFirm'),msg=document.getElementById('dxMessage'),fetchBtn=document.getElementById('dxFetch');
