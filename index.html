@@ -366,7 +366,7 @@ function tasnifMatchRows(){
   const key=JSON.stringify([x.name,x.mxik,x.barcode]),nameKey=tasnifNameKey(x.name);
   const saved=tasnifMatches[key],savedName=typeof saved==='object'?saved?.uprName:'';
   const savedUpr=savedName?byName.get(tasnifNameKey(savedName)):null;
-  const exact=byName.get(nameKey);
+  const exact=byName.get(nameKey)||byName.get(tasnifNameKey(tasnifUprStyleName(x.name)));
   if(!cache.has(nameKey)){const normalizedName=tasnifUprStyleName(x.name),phone=tasnifPhoneCandidate(x.name,catalog);cache.set(nameKey,{barcode:phone?.item?.codes?.length===1?{...phone,barcode:phone.item.codes[0]}:tasnifBarcodeNameCandidate(normalizedName,catalog)||tasnifBarcodeNameCandidate(x.name,catalog),name:phone?.item||tasnifAutoUprCandidate(normalizedName,catalog)||tasnifAutoUprCandidate(x.name,catalog)});}
   const found=cache.get(nameKey);
   const chosen=savedUpr||exact||found.barcode?.item||found.name;
@@ -484,14 +484,14 @@ function tasnifResolved(x,uprIndex,context){
  const catalog=context?.catalog||tasnifUprCatalog(),byName=context?.byName||new Map(catalog.map(item=>[item.key,item]));
  const saved=tasnifMatches[key],savedCode=typeof saved==='string'?saved:saved?.barcode;
  const savedName=typeof saved==='object'?saved?.uprName:'';
- const nameKey=tasnifNameKey(x.name);let chosen=(savedName&&byName.get(tasnifNameKey(savedName)))||byName.get(nameKey);
+ const nameKey=tasnifNameKey(x.name);let chosen=(savedName&&byName.get(tasnifNameKey(savedName)))||byName.get(nameKey)||byName.get(tasnifNameKey(tasnifUprStyleName(x.name)));
  if(!chosen){if(context?.candidates?.has(nameKey))chosen=context.candidates.get(nameKey);else{chosen=tasnifPhoneCandidate(x.name,catalog)?.item||tasnifAutoUprCandidate(tasnifUprStyleName(x.name),catalog)||tasnifAutoUprCandidate(x.name,catalog);context?.candidates?.set(nameKey,chosen)}}
  const codes=chosen?.codes||[];
  const validSaved=!!savedCode&&(soliqCodes.includes(savedCode)||codes.includes(savedCode));
- const verified=tasnifPhoneCandidate(x.name,catalog);const verifiedBarcode=verified?.item?.key===chosen?.key&&verified?.score>=0.8&&codes.length===1?codes[0]:'';
+ const verified=tasnifPhoneCandidate(x.name,catalog);const exactNormalized=chosen?.key===tasnifNameKey(tasnifUprStyleName(x.name));const verifiedBarcode=codes.length===1&&(exactNormalized||verified?.item?.key===chosen?.key&&verified?.score>=0.8)?codes[0]:'';
  const code=x.barcode||(soliqCodes.length===1?soliqCodes[0]:soliqCodes.length>1?'':validSaved?savedCode:verifiedBarcode||'');
  const source=x.barcode?'Didox':soliqCodes.length===1?'Soliq MXIK':code?'UPR nomi → Shtrix-kod':chosen?'UPR nomi bog‘landi, kod yo‘q':'Topilmadi';
- if(!x.barcode&&soliqCodes.length===0&&chosen&&(!savedName||codes.length===1&&!validSaved)){
+ if(!x.barcode&&soliqCodes.length===0&&chosen&&(!savedName||verifiedBarcode&&!validSaved)){
   tasnifMatches[key]={barcode:verifiedBarcode||'',uprName:chosen.name};
   try{localStorage.setItem(tasnifMatchKey,JSON.stringify(tasnifMatches))}catch(e){console.warn('Moslik saqlanmadi',e)}
  }
