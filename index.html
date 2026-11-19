@@ -222,22 +222,44 @@ function tasnifMatchColor(v){
  for(const [k,words] of Object.entries(colors))if(words.some(w=>t.includes(' '+w+' ')))return k;
  return '';
 }
+// Indeks bitta hisoblash davomida qayta ishlatiladi; asl ma'lumotlar o'zgarmaydi.
+const tasnifPreparedCatalogCache=new WeakMap();
+function tasnifPrepareCatalog(catalog){
+ let prepared=tasnifPreparedCatalogCache.get(catalog);if(prepared)return prepared;
+ const byToken=new Map(),items=[];
+ for(const item of catalog){
+  const tokens=tasnifProductTokens(item.name),tokenSet=new Set(tokens);
+  const entry={item,tokens,tokenSet,dimension:tasnifMatchDimensions(item.name),memory:tasnifMatchMemory(item.name),color:tasnifMatchColor(item.name)};
+  items.push(entry);
+  for(const token of tokenSet){if(!byToken.has(token))byToken.set(token,[]);byToken.get(token).push(entry)}
+ }
+ prepared={byToken,items};tasnifPreparedCatalogCache.set(catalog,prepared);return prepared;
+}
 function tasnifAutoUprCandidate(name,catalog){
  const tokens=tasnifProductTokens(name);if(tokens.length<2)return null;
+ const prepared=tasnifPrepareCatalog(catalog);
  const dimension=tasnifMatchDimensions(name),memory=tasnifMatchMemory(name),color=tasnifMatchColor(name);
  const isPhone=/\b(samsung|honor|redmi|xiaomi|iphone|apple|infinix|tecno|oppo|vivo|realme|poco|huawei)\b/i.test(tasnifMatchNormalize(name));
  const modelTokens=tokens.filter(t=>/\d/.test(t)&&/[a-z]/.test(t)&&!/^sm[a-z0-9]+$/.test(t)&&!/^\d+\/\d+$/.test(t));
+ const cleaned=tokens.filter(t=>!/^sm[a-z0-9]+$/.test(t)&&!/^\d{3,4}$/.test(t));
+ // Model tokeni bor bo'lsa, faqat shu modeldagi nomlarni tekshiramiz.
+ // Model yo'q bo'lsa, eng kam uchraydigan mazmunli token bilan toraytiramiz.
+ const keys=modelTokens.length?modelTokens:cleaned;
+ let candidates=null;
+ for(const token of keys){
+  const list=prepared.byToken.get(token)||[];
+  if(!candidates||list.length<candidates.length)candidates=list;
+ }
+ if(!candidates?.length)return null;
  const scored=[];
- for(const item of catalog){
-  const other=tasnifProductTokens(item.name),otherSet=new Set(other);
-  const od=tasnifMatchDimensions(item.name),om=tasnifMatchMemory(item.name),oc=tasnifMatchColor(item.name);
+ for(const entry of candidates){
+  const {item,tokens:other,tokenSet:otherSet,dimension:od,memory:om,color:oc}=entry;
   if((dimension&&od&&dimension!==od)||(memory&&om&&memory!==om)||(color&&oc&&color!==oc))continue;
   if(isPhone){
    if(memory&&!om)continue;
    if(color&&!oc)continue;
    if(modelTokens.length&&modelTokens.some(t=>!otherSet.has(t)))continue;
   }
-  const cleaned=tokens.filter(t=>!/^sm[a-z0-9]+$/.test(t)&&!/^\d{3,4}$/.test(t));
   const common=cleaned.filter(t=>otherSet.has(t)).length;
   let similarity=common/Math.max(cleaned.length,other.length,1);
   if(memory&&om&&memory===om)similarity=Math.min(1,similarity*.8+.2);
