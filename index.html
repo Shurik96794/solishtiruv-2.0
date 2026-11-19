@@ -275,6 +275,7 @@ function tasnifPhoneIdentity(name){
  for(const t of tokens.slice(i+1)){
   if(t===memory||stop.has(t))break;
   if(t==='galaxy')continue;
+  if(/^sm-[a-z0-9]+$/.test(t))continue;
   model.push(t);
  }
  if(!model.length||!model.some(t=>/\d/.test(t)))return null;
@@ -287,14 +288,18 @@ function tasnifPhoneCandidate(name,catalog){
   if(tasnifIsKPrefixProduct(item.name))continue;
   const target=tasnifPhoneIdentity(item.name);
   if(!target||source.brand!==target.brand||source.model!==target.model||source.memory!==target.memory)continue;
-  if(source.color&&target.color&&source.color!==target.color)continue;
-  if(source.color&&!target.color)continue;
+  if(source.color&&target.color!==source.color)continue;
   const score=source.color&&target.color?1:0.85;
   found.push({item,score});
  }
- found.sort((a,b)=>b.score-a.score);
- if(found.length!==1)return null;
- return found[0];
+ // Bir xil mahsulot turli UPR satrlarida bo‘lishi mumkin: faqat yagona nom+kod tasdiqlanadi.
+ const unique=new Map();
+ for(const result of found){
+  const key=result.item.key+'|'+result.item.codes.slice().sort().join(',');
+  if(!unique.has(key))unique.set(key,result);
+ }
+ const matches=[...unique.values()].sort((a,b)=>b.score-a.score);
+ return matches.length===1?matches[0]:null;
 }
 function tasnifBarcodeNameCandidate(name,catalog){
  const tokens=[...new Set(tasnifProductTokens(name))];if(tokens.length<2)return null;
@@ -487,13 +492,14 @@ function tasnifResolved(x,uprIndex,context){
  const saved=tasnifMatches[key],savedCode=typeof saved==='string'?saved:saved?.barcode;
  const savedName=typeof saved==='object'?saved?.uprName:'';
  const nameKey=tasnifNameKey(x.name);let chosen=(savedName&&byName.get(tasnifNameKey(savedName)))||byName.get(nameKey);
- if(!chosen){if(context?.candidates?.has(nameKey))chosen=context.candidates.get(nameKey);else{chosen=tasnifAutoUprCandidate(x.name,catalog);context?.candidates?.set(nameKey,chosen)}}
+ if(!chosen){if(context?.candidates?.has(nameKey))chosen=context.candidates.get(nameKey);else{chosen=tasnifPhoneCandidate(x.name,catalog)?.item||tasnifAutoUprCandidate(tasnifUprStyleName(x.name),catalog)||tasnifAutoUprCandidate(x.name,catalog);context?.candidates?.set(nameKey,chosen)}}
  const codes=chosen?.codes||[];
  const validSaved=!!savedCode&&(soliqCodes.includes(savedCode)||codes.includes(savedCode));
- const code=x.barcode||(soliqCodes.length===1?soliqCodes[0]:soliqCodes.length>1?'':validSaved?savedCode:codes.length===1?codes[0]:'');
+ const verified=tasnifPhoneCandidate(x.name,catalog);const verifiedBarcode=verified?.item?.key===chosen?.key&&verified?.score>=0.8&&codes.length===1?codes[0]:'';
+ const code=x.barcode||(soliqCodes.length===1?soliqCodes[0]:soliqCodes.length>1?'':validSaved?savedCode:verifiedBarcode||'');
  const source=x.barcode?'Didox':soliqCodes.length===1?'Soliq MXIK':code?'UPR nomi → Shtrix-kod':chosen?'UPR nomi bog‘landi, kod yo‘q':'Topilmadi';
  if(!x.barcode&&soliqCodes.length===0&&chosen&&(!savedName||codes.length===1&&!validSaved)){
-  tasnifMatches[key]={barcode:codes.length===1?codes[0]:'',uprName:chosen.name};
+  tasnifMatches[key]={barcode:verifiedBarcode||'',uprName:chosen.name};
   try{localStorage.setItem(tasnifMatchKey,JSON.stringify(tasnifMatches))}catch(e){console.warn('Moslik saqlanmadi',e)}
  }
  return {...x,uprName:chosen?.name||'',effectiveBarcode:code,barcodeSource:source};
