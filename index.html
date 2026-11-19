@@ -193,11 +193,11 @@ function tasnifPage(){
 }
 let tasnifTabRenderToken=0;
 function tasnifSwitchTab(tab){
- tasnifTab=active===7?(tab==='didox'?'didox':'soliq'):'match';
+ tasnifTab=['soliq','didox','match'].includes(tab)?tab:'soliq';
  tab=tasnifTab;
  document.getElementById('tasnifTabSoliq').style.display=active===7?'':'none';
  document.getElementById('tasnifTabDidox').style.display=active===7?'':'none';
- document.getElementById('tasnifTabMatch').style.display=active===15?'':'none';
+ document.getElementById('tasnifTabMatch').style.display='';
  for(const x of ['soliq','didox','match']){
   const suffix=x==='soliq'?'Soliq':x==='didox'?'Didox':'Match';
   document.getElementById('tasnif'+suffix+'Panel').style.display=tab===x?'':'none';
