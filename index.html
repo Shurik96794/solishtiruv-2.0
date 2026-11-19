@@ -240,6 +240,31 @@ function tasnifPrepareCatalog(catalog){
  prepared={byToken,items};tasnifPreparedCatalogCache.set(catalog,prepared);return prepared;
 }
 function normalizedPhoneBrand(name){const m=tasnifMatchNormalize(name).match(/\\b(samsung|honor|redmi|xiaomi|iphone|apple|infinix|tecno|oppo|vivo|realme|poco|huawei)\\b/);return m?m[1]:''}
+function tasnifBarcodeNameCandidate(name,catalog){
+ const tokens=[...new Set(tasnifProductTokens(name))];if(tokens.length<2)return null;
+ const prepared=tasnifPrepareCatalog(catalog);
+ const model=tokens.filter(t=>/[a-z]/.test(t)&&/\d/.test(t));
+ const anchors=model.length?model:tokens.filter(t=>t.length>=4);
+ const lists=anchors.map(t=>prepared.byToken.get(t)||[]).filter(x=>x.length);
+ if(!lists.length)return null;
+ const brand=normalizedPhoneBrand(name),memory=tasnifMatchMemory(name),color=tasnifMatchColor(name),dimension=tasnifMatchDimensions(name);
+ const results=[];
+ for(const e of lists.sort((a,b)=>a.length-b.length)[0]){
+  if(!e.item.codes||e.item.codes.length!==1)continue;
+  if(brand&&normalizedPhoneBrand(e.item.name)!==brand)continue;
+  if(model.some(t=>!e.tokenSet.has(t)))continue;
+  if(memory&&e.memory!==memory)continue;
+  if(color&&e.color!==color)continue;
+  if(dimension&&e.dimension!==dimension)continue;
+  if(['pro','plus','ultra','max'].some(q=>tokens.includes(q)!==e.tokenSet.has(q)))continue;
+  const other=[...new Set(e.tokens)],common=tokens.filter(t=>e.tokenSet.has(t)).length;
+  const score=common/Math.max(tokens.length,other.length,1);
+  if(score>=0.8)results.push({item:e.item,score});
+ }
+ results.sort((a,b)=>b.score-a.score);
+ if(!results.length||results.length>1&&results[0].score-results[1].score<0.12)return null;
+ return {...results[0],barcode:results[0].item.codes[0]};
+}
 function tasnifAutoUprCandidate(name,catalog){
  const tokens=tasnifProductTokens(name);if(!tokens.length)return null;
  const prepared=tasnifPrepareCatalog(catalog);
@@ -294,12 +319,13 @@ function tasnifMatchRows(){
   let candidate;
   if(candidateCache.has(nameKey))candidate=candidateCache.get(nameKey);
   else{candidate=tasnifAutoUprCandidate(x.name,catalog);candidateCache.set(nameKey,candidate)}
-  const chosen=savedUpr||exact||candidate;
+  const barcodeCandidate=!savedUpr&&!exact?tasnifBarcodeNameCandidate(x.name,catalog):null;
+  const chosen=savedUpr||exact||barcodeCandidate?.item||candidate;
   if(chosen&&!savedUpr){
    tasnifMatches[key]={...(typeof saved==='object'&&saved? saved:{}),uprName:chosen.name};
    tasnifMatchAutoDirty=true;
   }
-  return {...x,key,uprName:chosen?.name||'',uprCodes:chosen?.codes||[],effectiveBarcode:'',status:chosen?'matched':'missing',exact:!!exact,auto:!!chosen&&!savedUpr&&!exact};
+  return {...x,key,uprName:chosen?.name||'',uprCodes:chosen?.codes||[],effectiveBarcode:barcodeCandidate?.barcode||'',matchPercent:barcodeCandidate?Math.round(barcodeCandidate.score*100):null,status:chosen?'matched':'missing',exact:!!exact,auto:!!chosen&&!savedUpr&&!exact};
  });
  if(tasnifMatchAutoDirty){try{localStorage.setItem(tasnifMatchKey,JSON.stringify(tasnifMatches));tasnifMatchAutoDirty=false}catch(e){console.warn('Matching saqlash xatosi',e)}}
  return output;
