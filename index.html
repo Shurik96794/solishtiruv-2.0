@@ -582,18 +582,34 @@ function ehfUprCompare(d){
  const exact=related.filter(x=>invoice&&uprInvoiceNorm(uprInvoiceNumber(x))===invoice);
  let candidates=exact,method=exact.length?'Faktura raqami':'',ambiguous=false;
  if(!exact.length){
-  // Raqamsiz UPR kirimlari: faqat bir xil ta’minotchi, do‘kon, sana va jami summa.
+  // STIRga bog‘langan barcha UPR ta’minotchilarini turli sanalarda qidiramiz.
+  // Boshqa fakturalar aralashmasligi uchun har bir sana/do‘kon/ta’minotchi alohida guruh.
   const groups=new Map();
   for(const x of related){
    if(uprInvoiceNumber(x))continue;
    const date=uprDateISO(x.date),store=uprSupplierNorm(x.store),supplier=uprSupplierNorm(x.supplier);
-   if(!date||!targetDate||date!==targetDate)continue;
+   if(!date||!store)continue;
    const key=[supplier,String(x.supplierId||''),store,date].join('|');
    if(!groups.has(key))groups.set(key,[]);
    groups.get(key).push(x);
   }
-  const plausible=[...groups.values()].filter(g=>Math.abs(g.reduce((n,x)=>n+Number(x.qty||0)*Number(x.price||0),0)-targetTotal)<0.01);
-  if(plausible.length===1){candidates=plausible[0];method='Ta’minotchi + do‘kon + sana + summa'}
+  const invoiceLines=(d.lines||[]).map(l=>({code:String(l.bar||didoxLinkedBarcode({...l,_supplierInn:d.s_inn})||'').trim(),qty:Number(l.q)||0,total:Number(l.sum_q)||0}));
+  const plausible=[];
+  for(const group of groups.values()){
+   const total=group.reduce((n,x)=>n+Number(x.qty||0)*Number(x.price||0),0);
+   if(Math.abs(total-targetTotal)>0.01)continue;
+   if(group.length!==invoiceLines.length)continue;
+   const remaining=group.map(x=>({code:[...(barcodeIndex.get(barcodeKey(x.variantCode))||[])],qty:Number(x.qty)||0,total:(Number(x.qty)||0)*(Number(x.price)||0)}));
+   let ok=true;
+   for(const line of invoiceLines){
+    // Shtrix-kod bo‘lmasa taxminiy moslikni tasdiqlamaymiz.
+    const index=remaining.findIndex(x=>line.code&&x.code.includes(line.code)&&Math.abs(x.qty-line.qty)<0.000001&&Math.abs(x.total-line.total)<0.01);
+    if(index<0){ok=false;break}
+    remaining.splice(index,1);
+   }
+   if(ok&&remaining.length===0)plausible.push(group);
+  }
+  if(plausible.length===1){candidates=plausible[0];method='STIR → UPR ta’minotchi → sana/do‘kon → shtrix-kod, miqdor, summa'}
   else if(plausible.length>1)ambiguous=true;
  }
  const expected=(d.lines||[]).map(l=>({name:String(l.nm||''),code:didoxLinkedBarcode({...l,_supplierInn:d.s_inn}),qty:Number(l.q)||0,total:Number(l.sum_q)||0}));
@@ -612,7 +628,7 @@ function ehfUprCompare(d){
  actual.forEach((x,i)=>{if(!used.has(i))rows.push({name:'—',uprName:x.name,code:'',uprCode:x.code,didox:0,upr:x.qty,diff:x.qty,didoxTotal:0,uprTotal:x.total,amountDiff:x.total,barcodeConflict:false,nameConflict:true})});
  const matched=rows.filter(x=>x.didox>0&&x.upr>0&&!x.barcodeConflict&&!x.nameConflict&&Math.abs(x.diff)<0.000001&&Math.abs(x.amountDiff)<0.01).length;
  const complete=!!candidates.length&&!ambiguous&&rows.length>0&&matched===rows.length&&dxStatus(d).type!=='rejected';
- const reason=dxStatus(d).type==='rejected'?'Didox fakturasi rad etilgan — qabul qilish mumkin emas':ambiguous?'Bir nechta UPR kirimi bir xil shartlarga mos — hujjatni aniqlash kerak':!linked.length?'Ta’minotchi STIR bilan bog‘lanmagan':!candidates.length?'Mos UPR kirimi topilmadi (faktura raqami yoki ta’minotchi, sana va summa bo‘yicha)':complete?'Qabul qilish mumkin':'Mahsulot nomi, o‘lchami, shtrix-kod, miqdor yoki summada farq bor';
+ const reason=dxStatus(d).type==='rejected'?'Didox fakturasi rad etilgan — qabul qilish mumkin emas':ambiguous?'Bir nechta UPR kirimi bir xil shartlarga mos — hujjatni aniqlash kerak':!linked.length?'Ta’minotchi STIR bilan bog‘lanmagan':!candidates.length?'Aynan bitta UPR kirimi shtrix-kod, miqdor va summa bo‘yicha topilmadi':complete?'Qabul qilish mumkin':'Mahsulot nomi, o‘lchami, shtrix-kod, miqdor yoki summada farq bor';
  return {linked:linked.length>0,linkedNames:linked.map(x=>x.name),uprCount:candidates.length,rows,matched,complete,reason,method};
 }
 const ehfReviewKey='solishtiruv2_ehf_review';
@@ -623,13 +639,13 @@ function ehfUprCompareDialog(d){
  const result=ehfUprCompare(d),dlg=document.createElement('dialog');dlg.className='sc-dialog';dlg.style.cssText='width:min(1150px,96vw);max-width:96vw;max-height:94vh;padding:22px';
  const decision=ehfReviewGet(d);
  const fmt=n=>Number(n||0).toLocaleString('ru-RU');
- dlg.innerHTML='<h3>🔍 Didox № '+esc(d.f_no||'')+' ↔ UPR kirimlarini solishtirish</h3><p class="muted">Avval faktura raqami tekshiriladi. Raqam bo‘lmasa, faqat bitta aniq ta’minotchi/do‘kon/sana/summa guruhiga mos kirim ko‘riladi. Bir nechta nomzod bo‘lsa tasdiqlanmaydi.</p>'+
+ dlg.innerHTML='<h3>🔍 Didox № '+esc(d.f_no||'')+' ↔ UPR kirimlarini solishtirish</h3><p class="muted">Avval faktura raqami tekshiriladi. Raqam bo‘lmasa, STIRga bog‘langan ta’minotchilarning turli sanalardagi kirimlari alohida guruhlarda shtrix-kod, miqdor va summa bo‘yicha tekshiriladi. Bir nechta nomzod bo‘lsa tasdiqlanmaydi.</p>'+
  '<p><b>Didox yuridik korxonasi:</b> '+esc(d.supplier||'')+' · <b>STIR:</b> '+esc(d.s_inn||'')+'</p><p><b>STIR orqali bog‘langan UPR ta’minotchilari:</b> '+esc(result.linkedNames.join(', ')||'Topilmadi — Ta’minotchilar bo‘limida STIRni biriktiring')+'</p>'+
  '<p><b>Topish usuli:</b> '+esc(result.method||'Topilmadi')+' · <b>Natija:</b> <strong>'+esc(result.reason)+'</strong> · <b>To‘liq mos qatorlar:</b> '+result.matched+'/'+result.rows.length+'</p>'+
  '<div style="overflow:auto;max-height:58vh"><table><thead><tr><th>Mahsulot</th><th>Shtrix-kod</th><th>Didox miqdor</th><th>UPR miqdor</th><th>Farq</th><th>Didox summa</th><th>UPR summa</th><th>Summa farqi</th></tr></thead><tbody>'+
  result.rows.map(x=>'<tr><td>'+esc(x.name)+'</td><td>'+esc(x.code||'—')+'</td><td>'+fmt(x.didox)+'</td><td>'+fmt(x.upr)+'</td><td>'+fmt(x.diff)+'</td></tr>').join('')+'</tbody></table></div>'+
  '<div style="border-top:1px solid #ddd;padding-top:12px;margin-top:12px"><b>Xodimning tekshiruv xulosasi</b><p class="muted">Bu ichki tekshiruv belgisi. Didoxda imzo qo‘ymaydi.</p><p>Joriy xulosa: <b>'+esc(decision?.status||'Belgilanmagan')+'</b></p><textarea id="ehfReviewNote" rows="2" style="width:100%" placeholder="Izoh (ixtiyoriy)">'+esc(decision?.note||'')+'</textarea><div class="toolbar"><button class="primary" id="ehfReviewOk">✓ Tasdiqlash mumkin</button><button class="secondary" id="ehfReviewCheck">⚠ Tekshirish talab qilinadi</button><button class="secondary" id="ehfReviewReject">✕ Rad etish tavsiya etiladi</button></div></div>'+ 
- '<p class="muted">Diqqat: faktura raqamisiz moslik faqat yagona sana/do‘kon/ta’minotchi/summa guruhida tekshiriladi. UPR narxi va Didox QQS bilan summasi bir xil asosda bo‘lishi kerak. Bu oyna Didoxda imzo qo‘ymaydi.</p><button class="secondary" id="ehfUprClose">Yopish</button>';
+ '<p class="muted">Diqqat: faktura raqamisiz moslik faqat yagona sana/do‘kon/ta’minotchi/shtrix-kod/miqdor/summa guruhida tekshiriladi. UPR narxi va Didox QQS bilan summasi bir xil asosda bo‘lishi kerak. Bu oyna Didoxda imzo qo‘ymaydi.</p><button class="secondary" id="ehfUprClose">Yopish</button>';
  document.body.appendChild(dlg);
  [['ehfReviewOk','Tasdiqlash mumkin'],['ehfReviewCheck','Tekshirish talab qilinadi'],['ehfReviewReject','Rad etish tavsiya etiladi']].forEach(([id,status])=>{dlg.querySelector('#'+id).onclick=()=>{if(id==='ehfReviewOk'&&!result.complete){alert('Faktura to‘liq mos emas. Qabul qilish mumkin xulosasini berib bo‘lmaydi: '+result.reason);return}const note=dlg.querySelector('#ehfReviewNote').value;ehfReviewSet(d,status,note);dlg.close();if(document.getElementById('dxTable'))dxDraw();if(document.getElementById('ehfTable'))ehfDraw()}});
  dlg.querySelector('#ehfUprClose').onclick=()=>dlg.close();dlg.onclose=()=>dlg.remove();dlg.showModal();
