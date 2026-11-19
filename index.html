@@ -18,9 +18,9 @@ const ehfKey='solishtiruv2_ehf_kirim';
 let ehfDocs=[];try{ehfDocs=JSON.parse(localStorage.getItem(ehfKey)||'[]');if(!Array.isArray(ehfDocs))ehfDocs=[]}catch(e){ehfDocs=[]}
 function ehfId(d){return String(d.b_inn||'')+'|'+String(d.didox_id||d.f_no+'|'+d.f_sana)}
 function ehfSyncFromDidox(){
- // Only explicitly signed/approved documents may enter EHF.
- const approved=(Array.isArray(dxDocs)?dxDocs:[]).filter(d=>dxStatus(d).type==='signed'&&d.b_inn&&d.s_inn&&d.f_no&&Array.isArray(d.lines)&&d.lines.length);
- const byId=new Map(approved.map(d=>[ehfId(d),d]));
+ // Barcha Didox fakturalari EHF reyestrida ko‘rinadi; faqat imzolanganlari qoldiq reyestriga o‘tadi.
+ const source=(Array.isArray(dxDocs)?dxDocs:[]).filter(d=>d.f_no&&Array.isArray(d.lines));
+ const byId=new Map(source.map(d=>[ehfId(d),d]));
  const previous=ehfDocs.length;
  ehfDocs=[...byId.values()];
  localStorage.setItem(ehfKey,JSON.stringify(ehfDocs));
@@ -62,6 +62,21 @@ function ehfMatchDialog(d){
 const oneCKey='solishtiruv2_1c_product_receipts';
 let oneCReceipts=[];try{oneCReceipts=JSON.parse(localStorage.getItem(oneCKey)||'[]');if(!Array.isArray(oneCReceipts))oneCReceipts=[]}catch(e){oneCReceipts=[]}
 let oneCSelected='';
+function didoxLinkedBarcode(l){
+ const original=String(l.bar||'').trim();
+ if(original)return original;
+ const key=JSON.stringify([String(l.nm||'').trim(),String(l.mxik||'').trim(),original]);
+ const saved=tasnifMatches[key];
+ const savedCode=typeof saved==='string'?saved:String(saved?.barcode||'').trim();
+ const soliq=[...new Set((tasnifSoliqByMxik.get(tasnifNormCode(l.mxik))||[]).map(x=>String(x.barcode||'').trim()).filter(Boolean))];
+ if(soliq.length>1)return '';
+ if(soliq.length===1)return soliq[0];
+ if(!savedCode)return '';
+ // UPR orqali saqlangan kod haqiqiy katalog kodlaridan biri bo‘lishi kerak.
+ const catalog=tasnifUprCatalog();
+ const matched=typeof saved==='object'&&saved?.uprName?catalog.find(x=>x.key===tasnifNameKey(saved.uprName)):null;
+ return matched?.codes?.includes(savedCode)?savedCode:'';
+}
 function oneCSyncFromEhf(){
  const source=Array.isArray(ehfDocs)?ehfDocs:[];
  const entries=[];
@@ -69,7 +84,7 @@ function oneCSyncFromEhf(){
   if(dxStatus(d).type!=='signed'||!Array.isArray(d.lines)||!d.lines.length)continue;
   const map=new Map();
   for(const l of d.lines){
-   const name=String(l.nm||'').trim(),mxik=String(l.mxik||''),barcode=String(l.bar||''),unit=String(l.unit||''),price=Number(l.u)||0;
+   const name=String(l.nm||'').trim(),mxik=String(l.mxik||''),barcode=didoxLinkedBarcode(l),unit=String(l.unit||''),price=Number(l.u)||0;
    const key=JSON.stringify([name,mxik,barcode,unit,price]);
    if(!map.has(key))map.set(key,{name,mxik,barcode,unit,qty:0,price,total:0});
    const row=map.get(key);row.qty+=Number(l.q)||0;row.total+=Number(l.sum_q)||0;
@@ -531,8 +546,8 @@ function tasnifExport(){
  downloadData('TASNIF_MXIK_shtrixkod.csv','\ufeff'+rows.map(r=>r.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(';')).join('\r\n'),'text/csv;charset=utf-8');
 }
 function ehfPage(){
- return '<div class="panel ehf-workspace"><div class="ehf-heading"><div><h2>📥 1C / EHF kirimlari</h2><p class="muted">EDO’da imzolanganligi tasdiqlangan fakturalar — avtomatik kirim reyestri</p></div><span class="ehf-pill">Lokal reyestr · 1Cga ulanmagan</span></div>'+
- '<div class="ehf-filters"><input id="ehfSearch" placeholder="🔎 Xaridor MCHJ, STIR, sotuvchi yoki faktura №..." style="flex:2;min-width:230px"><label>Dan <input type="date" id="ehfFrom"></label><label>Gacha <input type="date" id="ehfTo"></label><select id="ehfStatus"><option value="">Tasdiqlangan fakturalar</option></select><button class="secondary" id="ehfClear">Tozalash</button></div>'+
+ return '<div class="panel ehf-workspace"><div class="ehf-heading"><div><h2>📥 1C / EHF kirimlari</h2><p class="muted">Barcha Didox fakturalari — holati bilan; faqat tasdiqlanganlari qoldiqqa o‘tadi</p></div><span class="ehf-pill">Lokal reyestr · 1Cga ulanmagan</span></div>'+
+ '<div class="ehf-filters"><input id="ehfSearch" placeholder="🔎 Xaridor MCHJ, STIR, sotuvchi yoki faktura №..." style="flex:2;min-width:230px"><label>Dan <input type="date" id="ehfFrom"></label><label>Gacha <input type="date" id="ehfTo"></label><select id="ehfStatus"><option value="">Barcha fakturalar</option><option value="signed">Tasdiqlangan</option><option value="pending">Kutilmoqda</option><option value="rejected">Rad etilgan</option><option value="unknown">Aniqlanmagan</option></select><button class="secondary" id="ehfClear">Tozalash</button></div>'+
  '<div class="ehf-actions"><button class="primary" id="ehfOpenDidox">📄 Didox fakturalari</button><button class="secondary" id="ehfCsv">↓ CSV eksport</button><div id="ehfStats" class="ehf-stats"></div></div>'+
  '<div id="ehfTable"></div><div id="ehfDetail"></div></div>';
 }
