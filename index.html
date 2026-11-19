@@ -168,12 +168,32 @@ let tasnifMatches={};try{tasnifMatches=JSON.parse(localStorage.getItem(tasnifMat
 function tasnifUprCatalog(){
  const byPc=new Map(),byName=new Map();
  for(const x of barcodeRows){const pc=barcodeKey(x.pc),code=String(x.barcode||'').trim();if(!pc||!code)continue;if(!byPc.has(pc))byPc.set(pc,new Set());byPc.get(pc).add(code)}
- for(const x of records[3]||[]){const name=String(x.product||'').trim(),key=tasnifNameKey(name),pc=barcodeKey(x.variantCode);if(!key||!pc)continue;
-  const codes=byPc.get(pc);if(!codes?.size)continue;
-  if(!byName.has(key))byName.set(key,{name,codes:new Set(),variants:new Set()});
-  const item=byName.get(key);for(const code of codes)item.codes.add(code);item.variants.add(pc);
+ for(const x of records[3]||[]){const name=String(x.product||'').trim(),key=tasnifNameKey(name),pc=barcodeKey(x.variantCode);if(!key)continue;
+  if(!byName.has(key))byName.set(key,{name,codes:new Set()});
+  const item=byName.get(key);for(const code of byPc.get(pc)||[])item.codes.add(code);
  }
  return [...byName.values()].map(x=>({name:x.name,key:tasnifNameKey(x.name),codes:[...x.codes]}));
+}
+function tasnifProductTokens(v){
+ let s=tasnifNameKey(v).replace(/(\d+)\s*(?:GB|ГБ)/g,'$1GB').replace(/(\d+)\s*(?:TB|ТБ)/g,'$1TB');
+ s=s.replace(/\b(?:СМАРТФОН|SMARTPHONE|ТЕЛЕФОН|PHONE|DUAL CARD|DUAL SIM|МОБИЛЬНЫЙ|МАРКИ|МОДЕЛЬ|MODEL|ЦВЕТ|COLOR|GB|ГБ)\b/g,' ');
+ return s.split(/[^A-ZА-ЯЁ0-9]+/).filter(t=>t.length>1);
+}
+function tasnifAutoUprCandidate(name,catalog){
+ const tokens=tasnifProductTokens(name),set=new Set(tokens);if(tokens.length<2)return null;
+ const models=tokens.filter(t=>/\d/.test(t)&&/[A-ZА-ЯЁ]/.test(t));
+ const memory=tokens.filter(t=>/^\d+(?:GB|TB)$/.test(t));
+ const scored=[];
+ for(const item of catalog){
+  if(item.codes.length!==1)continue;
+  const other=tasnifProductTokens(item.name),otherSet=new Set(other);
+  if(models.some(t=>!otherSet.has(t))||memory.some(t=>!otherSet.has(t)))continue;
+  const common=tokens.filter(t=>otherSet.has(t)).length;
+  const similarity=common/Math.max(tokens.length,other.length,1);
+  if(common>=3&&similarity>=0.85)scored.push({item,similarity});
+ }
+ scored.sort((a,b)=>b.similarity-a.similarity);
+ return scored.length===1||scored[0]?.similarity>scored[1]?.similarity+0.12?scored[0]?.item||null:null;
 }
 function tasnifMatchRows(){
  const catalog=tasnifUprCatalog(),byName=new Map(catalog.map(x=>[x.key,x]));
@@ -183,15 +203,15 @@ function tasnifMatchRows(){
   return soliqCodes.length!==1;
  }).map(x=>{
   const key=JSON.stringify([x.name,x.mxik,x.barcode]),nameKey=tasnifNameKey(x.name);
-  const upr=byName.get(nameKey),saved=tasnifMatches[key];
+  const exact=byName.get(nameKey),saved=tasnifMatches[key];
   const savedCode=typeof saved==='string'?saved:saved?.barcode;
   const savedName=typeof saved==='object'?saved?.uprName:'';
   const savedUpr=savedName?byName.get(tasnifNameKey(savedName)):null;
-  const chosen=savedUpr||upr,codes=chosen?.codes||[];
-  const validSaved=savedCode&&codes.includes(savedCode);
+  const chosen=savedUpr||exact||tasnifAutoUprCandidate(x.name,catalog);
+  const codes=chosen?.codes||[],validSaved=savedCode&&codes.includes(savedCode);
   const barcode=validSaved?savedCode:codes.length===1?codes[0]:'';
   const status=barcode?'matched':codes.length>1?'manual':'missing';
-  return {...x,key,uprName:chosen?.name||'',uprCodes:codes,effectiveBarcode:barcode,status,exact:!!upr};
+  return {...x,key,uprName:chosen?.name||'',uprCodes:codes,effectiveBarcode:barcode,status,exact:!!exact,auto:!!chosen&&!savedUpr&&!exact};
  });
 }
 let tasnifMatchPage=0;const tasnifMatchPageSize=50;
@@ -211,11 +231,11 @@ function tasnifMatchDraw(){
  root.innerHTML='<div class="toolbar"><button type="button" class="primary" id="tasnifUprMatch">▶ UPR nomi bo‘yicha avtomatik moslashtirish</button><span class="muted">Didoxda kod bo‘lmasa avval Soliq MXIK tekshiriladi. Faqat undan kod topilmaganlar UPR nomi orqali moslashtiriladi.</span></div>'+
  '<div class="tasnif-stats"><span><b>'+all.length+'</b> Didoxda shtrix-kodsiz</span><span><b>'+all.filter(x=>x.status==='matched').length+'</b> UPR nomi mos</span><span><b>'+all.filter(x=>x.status==='manual').length+'</b> kod tanlash kerak</span><span><b>'+all.filter(x=>x.status==='missing').length+'</b> mos topilmadi</span></div>'+
  '<div class="ehf-table-wrap"><table class="ehf-table tasnif-table"><thead><tr><th>№</th><th>Didox mahsulot nomi</th><th>UPR nomenklaturasi</th><th>UPR shtrix-kodi</th><th>Holat</th><th>Amal</th></tr></thead><tbody>'+
- visible.map((x,i)=>'<tr><td>'+(from+i+1)+'</td><td>'+esc(x.name)+'</td><td>'+esc(x.uprName||'—')+'</td><td>'+esc(x.effectiveBarcode||'—')+'</td><td>'+(x.status==='matched'?'✅ Nom va kod mos':x.status==='manual'?'⚠ Kod tanlash kerak':'❌ UPR nomi topilmadi')+'</td><td><button class="secondary" data-upr-review="'+i+'">Ko‘rish / tanlash</button></td></tr>').join('')+
+ visible.map((x,i)=>'<tr><td>'+(from+i+1)+'</td><td>'+esc(x.name)+'</td><td>'+esc(x.uprName||'—')+'</td><td>'+esc(x.effectiveBarcode||'—')+'</td><td>'+(x.status==='matched'?(x.auto?'✅ Avtomatik UPR mos':'✅ Nom va kod mos'):x.status==='manual'?'⚠ Kod tanlash kerak':'❌ UPR mosligi topilmadi')+'</td><td><button class="secondary" data-upr-review="'+i+'">Ko‘rish / tanlash</button></td></tr>').join('')+
  '</tbody></table></div><div class="toolbar"><button class="secondary" id="matchPrev" '+(tasnifMatchPage===0?'disabled':'')+'>← Oldingi</button><b>'+(tasnifMatchPage+1)+' / '+pages+' sahifa</b><button class="secondary" id="matchNext" '+(tasnifMatchPage>=pages-1?'disabled':'')+'>Keyingi →</button></div><div id="tasnifUprReview"></div>';
  root.querySelector('#tasnifUprMatch').onclick=()=>{
   let added=0,ambiguous=0,missing=0;
-  for(const x of all){if(!x.exact){missing++;continue}if(x.uprCodes.length!==1){ambiguous++;continue}
+  for(const x of all){if(!x.uprName){missing++;continue}if(x.uprCodes.length!==1){ambiguous++;continue}
    if(tasnifMatchSave(x,x.uprCodes[0],x.uprName))added++;
   }
   tasnifMatchDraw();alert('Nom bo‘yicha bog‘landi: '+added+' ta. Kod tanlash kerak: '+ambiguous+' ta. Nom topilmadi: '+missing+' ta.');
