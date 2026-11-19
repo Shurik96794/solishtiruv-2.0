@@ -265,6 +265,37 @@ function tasnifPrepareCatalog(catalog){
  prepared={byToken,items};tasnifPreparedCatalogCache.set(catalog,prepared);return prepared;
 }
 function normalizedPhoneBrand(name){const m=tasnifMatchNormalize(name).match(/\b(samsung|honor|redmi|xiaomi|iphone|apple|infinix|tecno|oppo|vivo|realme|poco|huawei)\b/);return m?m[1]:''}
+function tasnifPhoneIdentity(name){
+ const norm=tasnifMatchNormalize(name),brand=normalizedPhoneBrand(name),memory=tasnifMatchMemory(name),color=tasnifMatchColor(name);
+ if(!brand||!memory)return null;
+ const tokens=norm.split(' '),i=tokens.indexOf(brand);
+ if(i<0)return null;
+ const stop=new Set(['black','white','green','blue','gray','grey','brown','cyan','purple','red','gold','ocean','reddish','midnight','velvet','starry','awesome','navy','lilac','silver','pink','dual','card','smartfon','gb','pct','ru','eu']);
+ const model=[];
+ for(const t of tokens.slice(i+1)){
+  if(t===memory||stop.has(t))break;
+  if(t==='galaxy')continue;
+  model.push(t);
+ }
+ if(!model.length||!model.some(t=>/\d/.test(t)))return null;
+ return {brand,model:model.join(' '),memory,color};
+}
+function tasnifPhoneCandidate(name,catalog){
+ const source=tasnifPhoneIdentity(name);if(!source)return null;
+ const found=[];
+ for(const item of catalog){
+  if(tasnifIsKPrefixProduct(item.name))continue;
+  const target=tasnifPhoneIdentity(item.name);
+  if(!target||source.brand!==target.brand||source.model!==target.model||source.memory!==target.memory)continue;
+  if(source.color&&target.color&&source.color!==target.color)continue;
+  if(source.color&&!target.color)continue;
+  const score=source.color&&target.color?1:0.85;
+  found.push({item,score});
+ }
+ found.sort((a,b)=>b.score-a.score);
+ if(found.length!==1)return null;
+ return found[0];
+}
 function tasnifBarcodeNameCandidate(name,catalog){
  const tokens=[...new Set(tasnifProductTokens(name))];if(tokens.length<2)return null;
  const prepared=tasnifPrepareCatalog(catalog);
@@ -338,7 +369,7 @@ function tasnifMatchRows(){
   const saved=tasnifMatches[key],savedName=typeof saved==='object'?saved?.uprName:'';
   const savedUpr=savedName?byName.get(tasnifNameKey(savedName)):null;
   const exact=byName.get(nameKey);
-  if(!cache.has(nameKey)){const normalizedName=tasnifUprStyleName(x.name);cache.set(nameKey,{barcode:tasnifBarcodeNameCandidate(normalizedName,catalog)||tasnifBarcodeNameCandidate(x.name,catalog),name:tasnifAutoUprCandidate(normalizedName,catalog)||tasnifAutoUprCandidate(x.name,catalog)});}
+  if(!cache.has(nameKey)){const normalizedName=tasnifUprStyleName(x.name),phone=tasnifPhoneCandidate(x.name,catalog);cache.set(nameKey,{barcode:phone?.item?.codes?.length===1?{...phone,barcode:phone.item.codes[0]}:tasnifBarcodeNameCandidate(normalizedName,catalog)||tasnifBarcodeNameCandidate(x.name,catalog),name:phone?.item||tasnifAutoUprCandidate(normalizedName,catalog)||tasnifAutoUprCandidate(x.name,catalog)});}
   const found=cache.get(nameKey);
   const chosen=savedUpr||exact||found.barcode?.item||found.name;
   // UPR nomi tasdiqlangan yoki aynan mos bo‘lsa, uning yagona haqiqiy kodi olinadi.
