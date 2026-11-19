@@ -153,6 +153,7 @@ let tasnifTab='soliq';
 function tasnifPage(){
  return '<div class="panel tasnif-panel"><h2>🔗 Nomenklatura moslashtirish / TASNIF</h2><p class="muted">MXIK va shtrix-kod ma’lumotlarini ikki alohida manbada yuritish.</p><div class="toolbar"><button type="button" id="tasnifTabSoliq" class="primary">🏛️ Soliq ma’lumotlari</button><button type="button" id="tasnifTabDidox" class="secondary">📄 Didox nomenklaturasi</button><button type="button" id="tasnifTabMatch" class="secondary">🔗 Nomenklatura moslashtirish</button></div><div id="tasnifSoliqPanel"><div class="notice">Bu yerga faqat TASNIF soliq.uz saytidan olingan fayl yuklanadi. Didox, UPR va 1C ma’lumotlari bu bazaga avtomatik qo‘shilmaydi. Rasmiy saytga jonli API ulanishi yo‘q.</div><div class="toolbar"><a class="tasnif-link" href="https://tasnif.soliq.uz/" target="_blank" rel="noopener noreferrer">↗ TASNIF soliq.uz</a><label class="tasnif-link" for="tasnifSoliqFile" style="cursor:pointer">↑ MXIK / SHTRIX Excel yuklash</label><input type="file" id="tasnifSoliqFile" accept=".xlsx,.xls,.csv" style="display:none"><button type="button" class="secondary" id="tasnifSoliqExport">↓ Soliq CSV eksport</button></div><div class="toolbar"><input id="tasnifSoliqSearch" placeholder="Soliq bazasida mahsulot, MXIK yoki shtrix-kod qidirish..." style="flex:1"></div><div id="tasnifSoliqResults"></div></div><div id="tasnifMatchPanel" style="display:none"><div class="notice">Bu bo‘limga Didoxda ham, Soliq MXIK bazasida ham shtrix-kodi topilmagan mahsulotlar o‘tadi. Avval UPR nomi moslashtiriladi, keyin UPR shtrix-kodi olinadi. Noaniq mosliklar qo‘lda tasdiqlanadi.</div><div class="toolbar"><input id="tasnifMatchSearch" placeholder="Didox nomi, MXIK yoki shtrix-kod..." style="flex:1"><select id="tasnifMatchFilter"><option value="all">Barcha holatlar</option><option value="matched">Moslangan</option><option value="manual">Tekshirish kerak</option><option value="missing">Shtrix-kodsiz / topilmadi</option></select><button class="secondary" id="tasnifMatchExport">↓ Natija CSV</button></div><div id="tasnifMatchResults"></div></div><div id="tasnifDidoxPanel" style="display:none"><div class="notice">Bu jadval Didox fakturalaridan olingan. Soliq ma’lumotlaridan alohida saqlanadi. Didox → UPR moslashtirish EHF fakturasi ichida ishlaydi.</div><div class="toolbar"><input id="tasnifSearch" placeholder="Mahsulot, MXIK yoki shtrix-kod..." style="flex:1;min-width:240px"><select id="tasnifFilter"><option value="all">Barcha mahsulotlar</option><option value="mxik">MXIK bor</option><option value="barcode">Shtrix-kod bor</option><option value="missing">Shtrix-kod yo‘q</option></select><button class="secondary" id="tasnifExport">↓ Didox CSV eksport</button></div><div id="tasnifResults"></div></div></div>';
 }
+let tasnifTabRenderToken=0;
 function tasnifSwitchTab(tab){
  tasnifTab=tab;
  for(const x of ['soliq','didox','match']){
@@ -160,7 +161,15 @@ function tasnifSwitchTab(tab){
   document.getElementById('tasnif'+suffix+'Panel').style.display=tab===x?'':'none';
   document.getElementById('tasnifTab'+suffix).className=tab===x?'primary':'secondary';
  }
- if(tab==='soliq')tasnifSoliqDraw();else if(tab==='didox')tasnifDraw();else tasnifMatchDraw();
+ const token=++tasnifTabRenderToken;
+ const id=tab==='soliq'?'tasnifSoliqResults':tab==='didox'?'tasnifResults':'tasnifMatchResults';
+ const root=document.getElementById(id);
+ if(root)root.innerHTML='<p class="muted">⏳ Ma’lumotlar tayyorlanmoqda, iltimos kuting...</p>';
+ setTimeout(()=>{
+  if(token!==tasnifTabRenderToken||active!==7)return;
+  try{if(tab==='soliq')tasnifSoliqDraw();else if(tab==='didox')tasnifDraw();else tasnifMatchDraw()}
+  catch(e){console.error('Nomenklatura bo‘limi xatosi',e);const target=document.getElementById(id);if(target)target.innerHTML='<p class="notice">Bo‘limni ochishda xatolik: '+esc(e.message||String(e))+'</p>'}
+ },20);
 }
 const tasnifMatchKey='solishtiruv2_nomenclature_matches';
 let tasnifMatches={};try{tasnifMatches=JSON.parse(localStorage.getItem(tasnifMatchKey)||'{}')||{}}catch(e){tasnifMatches={}}
