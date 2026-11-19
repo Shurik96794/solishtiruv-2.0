@@ -333,7 +333,7 @@ function tasnifMatchRows(){
    tasnifMatches[key]={...(typeof saved==='object'&&saved?saved:{}),uprName:chosen.name,...(safeBarcode?{barcode:safeBarcode}:{})};
    tasnifMatchAutoDirty=true;
   }
-  return {...x,key,uprName:chosen?.name||'',uprCodes:chosen?.codes||[],effectiveBarcode:safeBarcode,matchPercent:found.barcode?.item?.key===chosen?.key?Math.round(found.barcode.score*100):null,status:safeBarcode?'matched':chosen?'manual':'missing',exact:!!exact,auto:!!chosen&&!savedUpr&&!exact};
+  return {...x,key,uprName:chosen?.name||'',uprCodes:chosen?.codes||[],effectiveBarcode:safeBarcode,matchPercent:found.barcode&&found.barcode.item?.key===chosen?.key?Math.round(found.barcode.score*100):null,status:safeBarcode?'matched':chosen?'manual':'missing',exact:!!exact,auto:!!chosen&&!savedUpr&&!exact};
  });
  if(tasnifMatchAutoDirty){try{localStorage.setItem(tasnifMatchKey,JSON.stringify(tasnifMatches));tasnifMatchAutoDirty=false}catch(e){console.warn('Matching saqlash xatosi',e)}}
  return output;
