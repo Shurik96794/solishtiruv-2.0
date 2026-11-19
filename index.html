@@ -220,7 +220,6 @@ function tasnifAutoUprCandidate(name,catalog){
  const modelTokens=tokens.filter(t=>/\d/.test(t)&&/[a-z]/.test(t)&&!/^sm[a-z0-9]+$/.test(t)&&!/^\d+\/\d+$/.test(t));
  const scored=[];
  for(const item of catalog){
-  if(item.codes.length!==1)continue;
   const other=tasnifProductTokens(item.name),otherSet=new Set(other);
   const od=tasnifMatchDimensions(item.name),om=tasnifMatchMemory(item.name),oc=tasnifMatchColor(item.name);
   if((dimension&&od&&dimension!==od)||(memory&&om&&memory!==om)||(color&&oc&&color!==oc))continue;
@@ -255,7 +254,7 @@ function tasnifMatchRows(){
   const chosen=savedUpr||exact||tasnifAutoUprCandidate(x.name,catalog);
   const codes=chosen?.codes||[],validSaved=savedCode&&codes.includes(savedCode);
   const barcode=validSaved?savedCode:codes.length===1?codes[0]:'';
-  const status=barcode?'matched':codes.length>1?'manual':'missing';
+  const status=barcode?'matched':chosen?'manual':'missing';
   if(barcode&&chosen&&!validSaved){tasnifMatches[key]={barcode,uprName:chosen.name};tasnifMatchAutoDirty=true}
   return {...x,key,uprName:chosen?.name||'',uprCodes:codes,effectiveBarcode:barcode,status,exact:!!exact,auto:!!chosen&&!savedUpr&&!exact};
  });
@@ -359,12 +358,19 @@ function tasnifUprCodes(name,index){return [...(index.get(tasnifNameKey(name))||
 function tasnifResolved(x,uprIndex){
  const key=JSON.stringify([x.name,x.mxik,x.barcode]);
  const soliqCodes=[...new Set((tasnifSoliqByMxik.get(tasnifNormCode(x.mxik))||[]).map(y=>String(y.barcode||'').trim()).filter(Boolean))];
+ const catalog=tasnifUprCatalog(),byName=new Map(catalog.map(item=>[item.key,item]));
  const saved=tasnifMatches[key],savedCode=typeof saved==='string'?saved:saved?.barcode;
- const uprCodes=tasnifUprCodes(x.name,uprIndex||tasnifUprIndex());
- const savedValid=savedCode&&(soliqCodes.includes(savedCode)||uprCodes.includes(savedCode)||typeof saved==='object'&&!!saved.uprName);
- const code=x.barcode||(soliqCodes.length===1?soliqCodes[0]:savedValid?savedCode:uprCodes.length===1?uprCodes[0]:'');
+ const savedName=typeof saved==='object'?saved?.uprName:'';
+ const chosen=(savedName&&byName.get(tasnifNameKey(savedName)))||byName.get(tasnifNameKey(x.name))||tasnifAutoUprCandidate(x.name,catalog);
+ const codes=chosen?.codes||[];
+ const validSaved=!!savedCode&&(soliqCodes.includes(savedCode)||codes.includes(savedCode));
+ const code=x.barcode||(soliqCodes.length===1?soliqCodes[0]:validSaved?savedCode:codes.length===1?codes[0]:'');
  const source=x.barcode?'Didox':soliqCodes.length===1?'Soliq MXIK':code?'UPR nomi':'Topilmadi';
- return {...x,effectiveBarcode:code,barcodeSource:source};
+ if(!x.barcode&&soliqCodes.length!==1&&chosen&&codes.length===1&&!validSaved){
+  tasnifMatches[key]={barcode:codes[0],uprName:chosen.name};
+  try{localStorage.setItem(tasnifMatchKey,JSON.stringify(tasnifMatches))}catch(e){console.warn('Moslik saqlanmadi',e)}
+ }
+ return {...x,uprName:chosen?.name||'',effectiveBarcode:code,barcodeSource:source};
 }
 function tasnifAutoBind(){
  const rows=tasnifRows();let added=0,existing=0,ambiguous=0,missing=0;
