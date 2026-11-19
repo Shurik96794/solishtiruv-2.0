@@ -178,6 +178,9 @@ function tasnifSwitchTab(tab){
 const tasnifMatchKey='solishtiruv2_nomenclature_matches';
 let tasnifMatches={};try{tasnifMatches=JSON.parse(localStorage.getItem(tasnifMatchKey)||'{}')||{}}catch(e){tasnifMatches={}}
 
+function tasnifIsKPrefixProduct(name){
+ return /^\s*["'“”«»]?\s*[кk]\s*["'“”«»]?\s*(?:смартфон|smartfon|smartphone|телефон|telefon|б\\/у|бу|b\\/u|used|samsung|honor|redmi|xiaomi|iphone|apple|infinix|tecno|oppo|vivo|realme|poco|huawei)\b/i.test(String(name||''));
+}
 function tasnifUprCatalog(){
  const byPc=new Map(),byName=new Map(),byBarcodeName=new Map(),barcodeNameDisplay=new Map();
  for(const x of barcodeRows){
@@ -360,7 +363,7 @@ function tasnifMatchDraw(){
  root.querySelector('#matchNext').onclick=()=>{tasnifMatchPage++;tasnifMatchDraw()};
  root.querySelectorAll('[data-upr-review]').forEach(el=>el.onclick=()=>{
   const x=visible[Number(el.dataset.uprReview)];if(!x)return;
-  const catalog=tasnifUprCatalog(),nameKey=tasnifNameKey(x.name);
+  const catalog=tasnifUprCatalog().filter(y=>!tasnifIsKPrefixProduct(y.name)),nameKey=tasnifNameKey(x.name);
   const terms=new Set(nameKey.split(' ').filter(t=>t.length>2));
   const candidates=catalog.map(y=>({...y,score:y.key===nameKey?100:y.key.includes(nameKey)||nameKey.includes(y.key)?80:y.key.split(' ').filter(t=>terms.has(t)).length})).filter(y=>y.score>0).sort((a,b)=>b.score-a.score).slice(0,25);
   if(x.uprName&&!candidates.some(y=>y.key===tasnifNameKey(x.uprName))){const found=catalog.find(y=>y.key===tasnifNameKey(x.uprName));if(found)candidates.unshift({...found,score:100})}
