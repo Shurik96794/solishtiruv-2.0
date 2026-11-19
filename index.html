@@ -219,9 +219,9 @@ function tasnifMatchNormalize(v){
  .replace(/\b(ugolok|burchakli)\b/g,' burchakli ').replace(/\b(dekor|decor)\b/g,' dekor ')
  .replace(/\b(daniya|dania)\b/g,' daniya ').replace(/\b(mebel|mebelniy)\b/g,' ');
  x=x.replace(/(\d)\s*[×*x]\s*(\d)/g,'$1x$2')
- .replace(/\b(\d{1,2})\s*(?:gb|g)\s*\+\s*(\d{2,4})\s*(?:gb|g|tb)?\b/g,'$1/$2')
- .replace(/\b(\d{1,2})\s*\+\s*(\d{2,4})\s*(?:gb|g|tb)?\b/g,'$1/$2')
- .replace(/\b(\d{1,2})\s*\/\s*(\d{2,4})\s*(?:gb|g|tb)?\b/g,'$1/$2')
+ .replace(/\b(\d{1,2})\s*(?:gb|g)\s*\+\s*(\d{2,4})(?:\s*(?:gb|g|tb))?\b/g,'$1/$2')
+ .replace(/\b(\d{1,2})\s*\+\s*(\d{2,4})(?:\s*(?:gb|g|tb))?\b/g,'$1/$2')
+ .replace(/\b(\d{1,2})\s*\/\s*(\d{2,4})(?:\s*(?:gb|g|tb))?\b/g,'$1/$2')
  .replace(/\b(\d{1,2})\s*(?:gb|g)\s+(\d{2,4})\s*(?:gb|g)\b/g,'$1/$2');
  return x.replace(/[^a-z0-9/]+/g,' ').replace(/\s+/g,' ').trim();
 }
