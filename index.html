@@ -286,7 +286,7 @@ function tasnifMatchRows(){
   const codes=chosen?.codes||[],validSaved=savedCode&&codes.includes(savedCode);
   const barcode=validSaved?savedCode:codes.length===1?codes[0]:'';
   const status=barcode?'matched':chosen?'manual':'missing';
-  if(barcode&&chosen&&!validSaved){tasnifMatches[key]={barcode,uprName:chosen.name};tasnifMatchAutoDirty=true}
+  if(chosen&&(!savedUpr||barcode&&!validSaved)){tasnifMatches[key]={barcode:barcode||'',uprName:chosen.name};tasnifMatchAutoDirty=true}
   return {...x,key,uprName:chosen?.name||'',uprCodes:codes,effectiveBarcode:barcode,status,exact:!!exact,auto:!!chosen&&!savedUpr&&!exact};
  });
  if(tasnifMatchAutoDirty){try{localStorage.setItem(tasnifMatchKey,JSON.stringify(tasnifMatches));tasnifMatchAutoDirty=false}catch(e){console.warn('Matching saqlash xatosi',e)}}
@@ -397,9 +397,9 @@ function tasnifResolved(x,uprIndex,context){
  const codes=chosen?.codes||[];
  const validSaved=!!savedCode&&(soliqCodes.includes(savedCode)||codes.includes(savedCode));
  const code=x.barcode||(soliqCodes.length===1?soliqCodes[0]:validSaved?savedCode:codes.length===1?codes[0]:'');
- const source=x.barcode?'Didox':soliqCodes.length===1?'Soliq MXIK':code?'UPR nomi':'Topilmadi';
- if(!x.barcode&&soliqCodes.length!==1&&chosen&&codes.length===1&&!validSaved){
-  tasnifMatches[key]={barcode:codes[0],uprName:chosen.name};
+ const source=x.barcode?'Didox':soliqCodes.length===1?'Soliq MXIK':code?'UPR nomi → Shtrix-kod':chosen?'UPR nomi bog‘landi, kod yo‘q':'Topilmadi';
+ if(!x.barcode&&soliqCodes.length!==1&&chosen&&(!savedName||codes.length===1&&!validSaved)){
+  tasnifMatches[key]={barcode:codes.length===1?codes[0]:'',uprName:chosen.name};
   try{localStorage.setItem(tasnifMatchKey,JSON.stringify(tasnifMatches))}catch(e){console.warn('Moslik saqlanmadi',e)}
  }
  return {...x,uprName:chosen?.name||'',effectiveBarcode:code,barcodeSource:source};
