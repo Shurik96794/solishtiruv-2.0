@@ -177,16 +177,28 @@ function tasnifUprCatalog(){
 function tasnifMatchNormalize(v){
  const dict={'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'j','з':'z','и':'i','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'x','ц':'ts','ч':'ch','ш':'sh','щ':'sh','ъ':'','ы':'i','ь':'','э':'e','ю':'yu','я':'ya','қ':'q','ғ':'g','ҳ':'h','ў':'o'};
  let x=[...String(v||'').normalize('NFKC').toLowerCase()].map(c=>dict[c]??c).join('');
- x=x.replace(/\b(ugolok|burchakli)\b/g,' burchakli ').replace(/\b(dekor|decor)\b/g,' dekor ').replace(/\b(daniya|dania)\b/g,' daniya ').replace(/\b(smartphone|smartfon|telefon)\b/g,' smartfon ').replace(/\b(mebel|mebelniy)\b/g,' ');
- x=x.replace(/(\d)\s*[×*x]\s*(\d)/g,'$1x$2').replace(/(\d)\s*\+\s*(\d)/g,'$1/$2');
+ x=x.replace(/\b(smartphone|smartfon|telefon|smartfonlar)\b/g,' smartfon ')
+ .replace(/\b(dual\s*(card|sim)|dualcard|dualsim|sim\s*free)\b/g,' ')
+ .replace(/\b(ugolok|burchakli)\b/g,' burchakli ').replace(/\b(dekor|decor)\b/g,' dekor ')
+ .replace(/\b(daniya|dania)\b/g,' daniya ').replace(/\b(mebel|mebelniy)\b/g,' ');
+ x=x.replace(/(\d)\s*[×*x]\s*(\d)/g,'$1x$2')
+ .replace(/\b(\d{1,2})\s*(?:gb|g)\s*\+\s*(\d{2,4})\s*(?:gb|g|tb)?\b/g,'$1/$2')
+ .replace(/\b(\d{1,2})\s*\+\s*(\d{2,4})\s*(?:gb|g|tb)?\b/g,'$1/$2')
+ .replace(/\b(\d{1,2})\s*\/\s*(\d{2,4})\s*(?:gb|g|tb)?\b/g,'$1/$2')
+ .replace(/\b(\d{1,2})\s*(?:gb|g)\s+(\d{2,4})\s*(?:gb|g)\b/g,'$1/$2');
  return x.replace(/[^a-z0-9/]+/g,' ').replace(/\s+/g,' ').trim();
 }
 function tasnifProductTokens(v){
- return tasnifMatchNormalize(v).split(' ').filter(t=>t.length>1&&!['smartfon','kursi','divan','mm','gb','mchj'].includes(t));
+ return tasnifMatchNormalize(v).split(' ').filter(t=>t.length>1&&!['smartfon','kursi','divan','mm','gb','mchj','dual','card','sim'].includes(t));
 }
 function tasnifMatchDimensions(v){const m=tasnifMatchNormalize(v).match(/\b\d{2,4}x\d{2,4}(?:x\d{2,4})?\b/);return m?m[0]:''}
 function tasnifMatchMemory(v){const m=tasnifMatchNormalize(v).match(/\b\d{1,2}\/\d{2,4}\b/);return m?m[0]:''}
-function tasnifMatchColor(v){const t=tasnifMatchNormalize(v);for(const [k,words] of Object.entries({black:['black','qora','cherniy','midnight'],white:['white','oq','beliy'],gray:['gray','grey','seriy','kulrang'],blue:['blue','siniy','kok'],green:['green','zeleniy','yashil'],gold:['gold','zolotoy'],red:['red','krasniy']})){if(words.some(w=>t.split(' ').includes(w)))return k}return ''}
+function tasnifMatchColor(v){
+ const t=' '+tasnifMatchNormalize(v)+' ';
+ const colors={reddishbrown:['reddish brown'],brown:['brown','korichneviy'],black:['black','qora','cherniy','midnight black'],white:['white','oq','beliy'],gray:['gray','grey','seriy','kulrang'],blue:['blue','siniy','kok'],green:['green','zeleniy','yashil'],gold:['gold','zolotoy'],red:['red','krasniy']};
+ for(const [k,words] of Object.entries(colors))if(words.some(w=>t.includes(' '+w+' ')))return k;
+ return '';
+}
 function tasnifAutoUprCandidate(name,catalog){
  const tokens=tasnifProductTokens(name),set=new Set(tokens);if(tokens.length<2)return null;
  const dimension=tasnifMatchDimensions(name),memory=tasnifMatchMemory(name),color=tasnifMatchColor(name);
@@ -196,13 +208,13 @@ function tasnifAutoUprCandidate(name,catalog){
   if(item.codes.length!==1)continue;
   const other=tasnifProductTokens(item.name),otherSet=new Set(other);
   const od=tasnifMatchDimensions(item.name),om=tasnifMatchMemory(item.name),oc=tasnifMatchColor(item.name);
-  if(dimension&&od&&dimension!==od||memory&&om&&memory!==om||color&&oc&&color!==oc)continue;
+  if((dimension&&od&&dimension!==od)||(memory&&om&&memory!==om)||(color&&oc&&color!==oc))continue;
   if(models.length&&models.some(t=>!otherSet.has(t)))continue;
   const common=tokens.filter(t=>otherSet.has(t)).length;
   let similarity=common/Math.max(tokens.length,other.length,1);
   if(dimension&&od&&dimension===od)similarity=Math.min(1,similarity*.75+.25);
   if(memory&&om&&memory===om)similarity=Math.min(1,similarity*.85+.15);
-  if(common>=2&&similarity>=0.85)scored.push({item,similarity});
+  if(common>=2&&similarity>=0.80)scored.push({item,similarity});
  }
  scored.sort((a,b)=>b.similarity-a.similarity);
  return scored.length&&(scored.length===1||scored[0].similarity>scored[1].similarity+0.12)?scored[0].item:null;
@@ -210,7 +222,7 @@ function tasnifAutoUprCandidate(name,catalog){
 let tasnifMatchAutoDirty=false;
 function tasnifMatchRows(){
  const catalog=tasnifUprCatalog(),byName=new Map(catalog.map(x=>[x.key,x]));
- return tasnifRows().filter(x=>{
+ const output=tasnifRows().filter(x=>{
   if(x.barcode)return false;
   const soliqCodes=[...new Set((tasnifSoliqByMxik.get(tasnifNormCode(x.mxik))||[]).map(y=>String(y.barcode||'').trim()).filter(Boolean))];
   return soliqCodes.length!==1;
