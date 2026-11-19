@@ -180,7 +180,7 @@ let tasnifMatches={};try{tasnifMatches=JSON.parse(localStorage.getItem(tasnifMat
 
 function tasnifIsKPrefixProduct(name){
  const text=String(name||'').trim().replace(/^["'“”«»]\s*/, '').trim();
- return /^[кk](?=\s|["'“”«»])\s*["'“”«»]?\s*/i.test(text);
+ return /^[кkмm](?=\s|["'“”«»])\s*["'“”«»]?\s*/i.test(text);
 }
 function tasnifUprCatalog(){
  const byPc=new Map(),byName=new Map(),byBarcodeName=new Map(),barcodeNameDisplay=new Map();
