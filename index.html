@@ -55,13 +55,23 @@ function ehfMatchDialog(d){
  dlg.innerHTML='<h3>🔗 Didox → UPR nomenklatura moslashtirish</h3><p>'+esc(d.supplier||'')+' · Faktura № '+esc(d.f_no||'')+'</p><p class="muted">Markirovkali tovarlarda Data Matrix (KIZ) alohida saqlanadi. KIZ bo‘lmasa tovar markirovkasiz deb taxmin qilinmaydi. Noma’lum moslik avtomatik tasdiqlanmaydi.</p><div style="overflow:auto;max-height:65vh"><table><thead><tr><th>Didox mahsuloti</th><th>MXIK</th><th>Turi</th><th>UPR nomenklaturasi</th><th>Shtrix-kod / GTIN</th><th>Moslik</th></tr></thead><tbody>'+
  (d.lines||[]).map((l,i)=>{const m=ehfResolve(d,l);return '<tr><td>'+esc(l.nm||'')+'</td><td>'+esc(l.mxik||'')+'</td><td>'+esc(m.type)+'</td><td><select data-ehf-map="'+i+'" style="max-width:310px"><option value="">— Moslik tanlanmagan —</option>'+all.map((x,j)=>'<option value="'+j+'" '+(m.item&&x.id===m.item.id&&x.pc===m.item.pc?'selected':'')+'>'+esc(x.name)+' ('+esc(x.pc||x.id)+')</option>').join('')+'</select></td><td>'+esc(m.barcode||'—')+'</td><td>'+esc(m.state)+'</td></tr>'}).join('')+'</tbody></table></div><div class="toolbar" style="margin-top:16px"><button class="primary" id="ehfMatchSave">Mosliklarni saqlash</button><button class="secondary" id="ehfMatchClose">Yopish</button></div>';
  document.body.appendChild(dlg);dlg.querySelector('#ehfMatchClose').onclick=()=>dlg.close();dlg.onclose=()=>dlg.remove();
- dlg.querySelector('#ehfMatchSave').onclick=()=>{dlg.querySelectorAll('[data-ehf-map]').forEach(sel=>{const l=d.lines[Number(sel.dataset.ehfMap)],key=ehfMapKey(d,l);if(sel.value!==''){const x=all[Number(sel.value)];ehfMappings[key]={id:x.id,pc:x.pc}}else delete ehfMappings[key]});localStorage.setItem(ehfMatchKey,JSON.stringify(ehfMappings));dlg.close();ehfDraw()};
+ dlg.querySelector('#ehfMatchSave').onclick=()=>{dlg.querySelectorAll('[data-ehf-map]').forEach(sel=>{const l=d.lines[Number(sel.dataset.ehfMap)],key=ehfMapKey(d,l);if(sel.value!==''){const x=all[Number(sel.value)];ehfMappings[key]={id:x.id,pc:x.pc}}else delete ehfMappings[key]});localStorage.setItem(ehfMatchKey,JSON.stringify(ehfMappings));dlg.close();if(document.getElementById('dxTable'))dxDraw();if(document.getElementById('ehfTable'))ehfDraw()};
  dlg.showModal();
 }
 
 const oneCKey='solishtiruv2_1c_product_receipts';
 let oneCReceipts=[];try{oneCReceipts=JSON.parse(localStorage.getItem(oneCKey)||'[]');if(!Array.isArray(oneCReceipts))oneCReceipts=[]}catch(e){oneCReceipts=[]}
 let oneCSelected='';
+let didoxBarcodeCache={rows:null,barcodes:null,rowCount:-1,barcodeCount:-1,catalog:[],byName:new Map()};
+function didoxBarcodeCatalog(){
+ const rows=records[3]||[],bars=barcodeRows||[];
+ if(didoxBarcodeCache.rows!==rows||didoxBarcodeCache.barcodes!==bars||didoxBarcodeCache.rowCount!==rows.length||didoxBarcodeCache.barcodeCount!==bars.length){
+  const catalog=tasnifUprCatalog().filter(x=>!tasnifIsKPrefixProduct(x.name));
+  didoxBarcodeCache={rows,barcodes:bars,rowCount:rows.length,barcodeCount:bars.length,catalog,byName:new Map(catalog.map(x=>[x.key,x]))};
+ }
+ return didoxBarcodeCache.catalog;
+}
+function didoxBarcodeNameIndex(){didoxBarcodeCatalog();return didoxBarcodeCache.byName}
 function didoxLinkedBarcode(l){
  const original=String(l.bar||'').trim();
  if(original)return original;
@@ -71,8 +81,8 @@ function didoxLinkedBarcode(l){
  const soliq=[...new Set((tasnifSoliqByMxik.get(tasnifNormCode(mxik))||[]).map(x=>String(x.barcode||'').trim()).filter(Boolean))];
  if(soliq.length===1)return soliq[0];
  if(soliq.length>1)return '';
- const catalog=tasnifUprCatalog().filter(x=>!tasnifIsKPrefixProduct(x.name));
- const byName=new Map(catalog.map(x=>[x.key,x]));
+ const catalog=didoxBarcodeCatalog();
+ const byName=didoxBarcodeNameIndex();
  const mapped=ehfMappings[[String(l._supplierInn||''),mxik,ehfNormalize(name)].join('|')];
  if(mapped){
   const upr=(records[3]||[]).find(x=>String(x.tovarId||'')===String(mapped.id||'')&&String(x.variantCode||'')===String(mapped.pc||''));
@@ -589,7 +599,7 @@ function ehfUprCompareDialog(d){
  '<div style="border-top:1px solid #ddd;padding-top:12px;margin-top:12px"><b>Xodimning tekshiruv xulosasi</b><p class="muted">Bu ichki tekshiruv belgisi. Didoxda imzo qo‘ymaydi.</p><p>Joriy xulosa: <b>'+esc(decision?.status||'Belgilanmagan')+'</b></p><textarea id="ehfReviewNote" rows="2" style="width:100%" placeholder="Izoh (ixtiyoriy)">'+esc(decision?.note||'')+'</textarea><div class="toolbar"><button class="primary" id="ehfReviewOk">✓ Tasdiqlash mumkin</button><button class="secondary" id="ehfReviewCheck">⚠ Tekshirish talab qilinadi</button><button class="secondary" id="ehfReviewReject">✕ Rad etish tavsiya etiladi</button></div></div>'+ 
  '<p class="muted">Diqqat: bir ta’minotchining bir nechta UPR hujjati bo‘lsa, natija ortiqcha qatorlarni ham qamrab olishi mumkin. Bu oyna avtomatik imzolamaydi va qoldiqni o‘zgartirmaydi.</p><button class="secondary" id="ehfUprClose">Yopish</button>';
  document.body.appendChild(dlg);
- [['ehfReviewOk','Tasdiqlash mumkin'],['ehfReviewCheck','Tekshirish talab qilinadi'],['ehfReviewReject','Rad etish tavsiya etiladi']].forEach(([id,status])=>{dlg.querySelector('#'+id).onclick=()=>{const note=dlg.querySelector('#ehfReviewNote').value;ehfReviewSet(d,status,note);dlg.close();ehfDraw()}});
+ [['ehfReviewOk','Tasdiqlash mumkin'],['ehfReviewCheck','Tekshirish talab qilinadi'],['ehfReviewReject','Rad etish tavsiya etiladi']].forEach(([id,status])=>{dlg.querySelector('#'+id).onclick=()=>{const note=dlg.querySelector('#ehfReviewNote').value;ehfReviewSet(d,status,note);dlg.close();if(document.getElementById('dxTable'))dxDraw();if(document.getElementById('ehfTable'))ehfDraw()}});
  dlg.querySelector('#ehfUprClose').onclick=()=>dlg.close();dlg.onclose=()=>dlg.remove();dlg.showModal();
 }
 function ehfTabs(tab){return '<div class="toolbar" style="margin-bottom:14px"><button class="'+(tab==='ehf'?'primary':'secondary')+'" onclick="active=4;render()">📥 EHF kirimlari</button><button class="'+(tab==='edo'?'primary':'secondary')+'" onclick="active=14;render()">📄 EDO / Didox fakturalari</button></div>'}
@@ -602,7 +612,8 @@ function ehfPage(){
 let ehfSelectedId='';
 function ehfDraw(){
  const root=document.getElementById('ehfTable');if(!root)return;
- try{ehfSyncFromDidox()}catch(err){root.textContent='EHF sinxronlash xatosi: '+err.message;return}
+ // Ma'lumotlar Didox yuklanganda sinxronlanadi; har qidiruvda qoldiqni qayta hisoblamaymiz.
+ if(!Array.isArray(ehfDocs))ehfDocs=[];
  const q=(document.getElementById('ehfSearch')?.value||'').toLocaleLowerCase().trim();
  const from=document.getElementById('ehfFrom')?.value||'',to=document.getElementById('ehfTo')?.value||'',status=document.getElementById('ehfStatus')?.value||'';
  const names=new Map((records.storeCompanies||[]).filter(x=>x.inn).map(x=>[String(x.inn),x.company||'']));
@@ -612,13 +623,13 @@ function ehfDraw(){
  const money=v=>Number(v||0).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2});
  root.innerHTML='<div class="ehf-table-wrap"><table class="ehf-table"><thead><tr><th>Tanlash</th><th>Qabul qiluvchi (xaridor MCHJ)</th><th>Sotuvchi (ta’minotchi)</th><th>Faktura №</th><th>Sana</th><th>Jami summa</th><th>Didox holati</th><th>Amallar</th></tr></thead><tbody>'+
  arr.map((d,i)=>'<tr class="'+(ehfSelectedId===ehfId(d)?'ehf-active':'')+'"><td><input type="radio" name="ehfPick" data-ehf-pick="'+i+'" '+(ehfSelectedId===ehfId(d)?'checked':'')+'></td><td><b>'+esc(names.get(String(d.b_inn))||d.buyer||'—')+'</b><small>STIR: '+esc(d.b_inn||'')+'</small></td><td><b>'+esc(d.supplier||'—')+'</b><small>STIR: '+esc(d.s_inn||'')+'</small></td><td><b>'+esc(d.f_no||'')+'</b></td><td>'+esc(d.f_sana||'')+'</td><td>'+money(d.jami)+'</td><td><span class="ehf-status ehf-'+dxStatus(d).type+'">'+esc(dxStatus(d).label)+'</span></td><td><button class="secondary" data-ehf-pick="'+i+'" title="Tovarlarni ko‘rish">👁</button> <button class="secondary" data-ehf-dialog="'+i+'" title="Faktura shakli">▤</button></td></tr>'+
- (ehfSelectedId===ehfId(d)?'<tr class="ehf-expanded-row"><td colspan="8"><div class="ehf-inline-detail"><div class="ehf-inline-heading"><div><h3>📦 Faktura № '+esc(d.f_no||'')+' — mahsulotlar ('+(d.lines||[]).length+' ta)</h3><p class="muted">'+esc(names.get(String(d.b_inn))||d.buyer||'—')+' → '+esc(d.supplier||'—')+' · '+esc(d.f_sana||'')+'</p></div><div class="ehf-bottom-buttons"><button class="primary" data-ehf-match="'+i+'">🔗 Nomenklatura / shtrix-kod</button> <button class="secondary" data-ehf-upr="'+i+'">🔍 UPR bilan solishtirish</button> <button class="secondary" data-ehf-dialog="'+i+'">▤ Faktura shakli</button><button class="secondary" data-ehf-collapse>✕ Yopish</button></div></div><div class="ehf-table-wrap"><table class="ehf-table"><thead><tr><th>№</th><th>Didox mahsulot nomi</th><th>MXIK</th><th>Shtrix-kod</th><th>O‘lchov birligi</th><th>Miqdor</th><th>Narx (QQS bilan)</th><th>Jami (QQS bilan)</th></tr></thead><tbody>'+
+ (ehfSelectedId===ehfId(d)?'<tr class="ehf-expanded-row"><td colspan="8"><div class="ehf-inline-detail"><div class="ehf-inline-heading"><div><h3>📦 Faktura № '+esc(d.f_no||'')+' — mahsulotlar ('+(d.lines||[]).length+' ta)</h3><p class="muted">'+esc(names.get(String(d.b_inn))||d.buyer||'—')+' → '+esc(d.supplier||'—')+' · '+esc(d.f_sana||'')+'</p></div><div class="ehf-bottom-buttons"><button class="secondary" data-ehf-dialog="'+i+'">▤ Faktura shakli</button><button class="secondary" data-ehf-collapse>✕ Yopish</button></div></div><div class="ehf-table-wrap"><table class="ehf-table"><thead><tr><th>№</th><th>Didox mahsulot nomi</th><th>MXIK</th><th>Shtrix-kod</th><th>O‘lchov birligi</th><th>Miqdor</th><th>Narx (QQS bilan)</th><th>Jami (QQS bilan)</th></tr></thead><tbody>'+
  (d.lines||[]).map((l,j)=>'<tr><td>'+(j+1)+'</td><td>'+esc(l.nm||'')+'</td><td>'+esc(l.mxik||'')+'</td><td>'+esc(didoxLinkedBarcode({...l,_supplierInn:d.s_inn})||'—')+'</td><td>'+esc(l.unit||'')+'</td><td>'+esc(l.q??'')+'</td><td>'+money(l.u)+'</td><td>'+money(l.sum_q)+'</td></tr>').join('')+
  '</tbody></table></div><div class="ehf-detail-total">Jami: '+money(d.jami)+' so‘m</div></div></td></tr>':'')).join('')+'</tbody></table></div>';
  root.querySelectorAll('[data-ehf-pick]').forEach(el=>{const select=()=>{const id=ehfId(arr[Number(el.dataset.ehfPick)]);ehfSelectedId=(el.type!=='radio'&&ehfSelectedId===id)?'':id;ehfDraw()};if(el.type==='radio')el.onchange=select;else el.onclick=select});
  root.querySelectorAll('[data-ehf-dialog]').forEach(el=>el.onclick=()=>dxInvoiceDialog(arr[Number(el.dataset.ehfDialog)]));
- root.querySelectorAll('[data-ehf-match]').forEach(el=>el.onclick=()=>ehfMatchDialog(arr[Number(el.dataset.ehfMatch)]));
- root.querySelectorAll('[data-ehf-upr]').forEach(el=>el.onclick=()=>ehfUprCompareDialog(arr[Number(el.dataset.ehfUpr)]));
+
+
  
  root.querySelectorAll('[data-ehf-collapse]').forEach(el=>el.onclick=()=>{ehfSelectedId='';ehfDraw()});
  const detail=document.getElementById('ehfDetail');if(detail)detail.innerHTML='';
@@ -705,10 +716,12 @@ function dxDraw(){
  root.innerHTML='<p><b>'+list.length+'</b> ta’minotchi · <b>'+docs.length+'</b> faktura · <b>'+docs.reduce((n,d)=>n+d.lines.length,0)+'</b> tovar qatori</p>'+
  '<div style="overflow:auto"><table><thead><tr><th>Ko‘rish</th><th>Ta’minotchi</th><th>STIR</th><th>Fakturalar</th><th>Jami summa</th><th>Holat</th></tr></thead><tbody>'+
  list.map((g,gi)=>'<tr><td><button class="secondary" data-dx-group="'+gi+'" title="Fakturalarni ochish" aria-label="Fakturalarni ochish">'+(dxOpenSuppliers.has(g.key)?'◉':'👁')+'</button></td><td><b>'+esc(g.name)+'</b></td><td>'+esc(g.inn)+'</td><td>'+g.docs.length+' ta</td><td>'+g.sum.toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2})+'</td><td>'+dxGroupBadge(g)+'</td></tr>'+
- (dxOpenSuppliers.has(g.key)?'<tr><td colspan="6" style="padding:10px 16px;background:var(--surface,#f7f9fc)"><div style="overflow:auto"><table><thead><tr><th>Sana</th><th>Faktura №</th><th>Xaridor STIR</th><th>Didox holati</th><th>Tekshirish muddati</th><th>Summa</th><th>Faktura shakli</th></tr></thead><tbody>'+
- g.docs.map(x=>'<tr><td>'+esc(x.d.f_sana||'')+'</td><td>'+esc(x.d.f_no||'')+'</td><td>'+esc(x.d.b_inn||'')+'</td><td>'+dxStatusBadge(x.d)+'</td><td>'+dxDeadlineBadge(x.d,x.i)+'</td><td>'+esc(x.d.jami??'')+'</td><td><button class="secondary" data-dx-invoice="'+x.i+'">👁 Ko‘rish ('+x.d.lines.length+')</button></td></tr>').join('')+'</tbody></table></div></td></tr>':'')).join('')+'</tbody></table></div>';
+ (dxOpenSuppliers.has(g.key)?'<tr><td colspan="6" style="padding:10px 16px;background:var(--surface,#f7f9fc)"><div style="overflow:auto"><table><thead><tr><th>Sana</th><th>Faktura №</th><th>Xaridor STIR</th><th>Didox holati</th><th>Tekshirish muddati</th><th>Summa</th><th>Ichki tekshiruv</th><th>Amallar</th></tr></thead><tbody>'+
+ g.docs.map(x=>'<tr><td>'+esc(x.d.f_sana||'')+'</td><td>'+esc(x.d.f_no||'')+'</td><td>'+esc(x.d.b_inn||'')+'</td><td>'+dxStatusBadge(x.d)+'</td><td>'+dxDeadlineBadge(x.d,x.i)+'</td><td>'+esc(x.d.jami??'')+'</td><td>'+esc(ehfReviewGet(x.d)?.status||'Belgilanmagan')+'</td><td><button class="secondary" data-dx-invoice="'+x.i+'">👁 Ko‘rish</button> <button class="primary" data-dx-compare="'+x.i+'">🔍 UPR solishtirish</button> <button class="secondary" data-dx-map="'+x.i+'">🔗 Shtrix-kod</button></td></tr>').join('')+'</tbody></table></div></td></tr>':'')).join('')+'</tbody></table></div>';
  root.querySelectorAll('[data-dx-group]').forEach(btn=>btn.onclick=()=>{const g=list[Number(btn.dataset.dxGroup)];if(dxOpenSuppliers.has(g.key))dxOpenSuppliers.delete(g.key);else dxOpenSuppliers.add(g.key);dxDraw()});
  root.querySelectorAll('[data-dx-invoice]').forEach(btn=>btn.onclick=()=>dxInvoiceDialog(docs[Number(btn.dataset.dxInvoice)]));
+ root.querySelectorAll('[data-dx-compare]').forEach(btn=>btn.onclick=()=>ehfUprCompareDialog(docs[Number(btn.dataset.dxCompare)]));
+ root.querySelectorAll('[data-dx-map]').forEach(btn=>btn.onclick=()=>ehfMatchDialog(docs[Number(btn.dataset.dxMap)]));
  root.querySelectorAll('[data-dx-deadline]').forEach(btn=>btn.onclick=()=>alert(dxReceiptInfo(docs[Number(btn.dataset.dxDeadline)]).msg));
 }
 function dxAccept(payload){
