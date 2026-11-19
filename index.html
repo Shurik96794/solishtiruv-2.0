@@ -179,7 +179,8 @@ const tasnifMatchKey='solishtiruv2_nomenclature_matches';
 let tasnifMatches={};try{tasnifMatches=JSON.parse(localStorage.getItem(tasnifMatchKey)||'{}')||{}}catch(e){tasnifMatches={}}
 
 function tasnifIsKPrefixProduct(name){
- return /^\s*["'“”«»]?\s*[кk]\s*["'“”«»]?\s*(?:смартфон|smartfon|smartphone|телефон|telefon|б\\/у|бу|b\\/u|used|samsung|honor|redmi|xiaomi|iphone|apple|infinix|tecno|oppo|vivo|realme|poco|huawei)\b/i.test(String(name||''));
+ const text=String(name||'').trim().replace(/^["'“”«»]\s*/, '').trim();
+ return /^[кk](?=\s|["'“”«»])\s*["'“”«»]?\s*/i.test(text);
 }
 function tasnifUprCatalog(){
  const byPc=new Map(),byName=new Map(),byBarcodeName=new Map(),barcodeNameDisplay=new Map();
