@@ -140,7 +140,8 @@ function tasnifRows(){
 }
 const tasnifSoliqKey='solishtiruv2_soliq_reference';
 let tasnifSoliq=[],tasnifSoliqByMxik=new Map();
-function tasnifSoliqIndex(){tasnifSoliqByMxik=new Map();for(const x of tasnifSoliq){let a=tasnifSoliqByMxik.get(x.mxik);if(!a){a=[];tasnifSoliqByMxik.set(x.mxik,a)}a.push(x)}}
+function tasnifNormCode(v){let x=String(v??'').trim().replace(/[\s\u00a0'’]/g,'');if(/^[0-9]+(?:\.0+)?$/.test(x))return x.replace(/\.0+$/,'').replace(/^0+(?=\d)/,'');return x.toUpperCase()}
+function tasnifSoliqIndex(){tasnifSoliqByMxik=new Map();for(const x of tasnifSoliq){let a=tasnifSoliqByMxik.get(tasnifNormCode(x.mxik));if(!a){a=[];tasnifSoliqByMxik.set(tasnifNormCode(x.mxik),a)}a.push(x)}}
 function tasnifSoliqDb(){return new Promise((resolve,reject)=>{const req=indexedDB.open('solishtiruv2_soliq_db',1);req.onupgradeneeded=()=>req.result.createObjectStore('reference');req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error)})}
 async function tasnifSoliqSave(rows){const db=await tasnifSoliqDb();try{await new Promise((resolve,reject)=>{const tx=db.transaction('reference','readwrite');tx.objectStore('reference').put(rows,'mxik');tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error)})}finally{db.close()}}
 async function tasnifSoliqLoad(){try{const db=await tasnifSoliqDb();let rows;try{rows=await new Promise((resolve,reject)=>{const req=db.transaction('reference','readonly').objectStore('reference').get('mxik');req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error)})}finally{db.close()}
@@ -165,11 +166,11 @@ const tasnifMatchKey='solishtiruv2_nomenclature_matches';
 let tasnifMatches={};try{tasnifMatches=JSON.parse(localStorage.getItem(tasnifMatchKey)||'{}')||{}}catch(e){tasnifMatches={}}
 function tasnifMatchRows(){
  return tasnifRows().map(x=>{
-  const key=JSON.stringify([x.name,x.mxik,x.barcode]),candidates=tasnifSoliqByMxik.get(x.mxik)||[];
+  const key=JSON.stringify([x.name,x.mxik,x.barcode]),candidates=tasnifSoliqByMxik.get(tasnifNormCode(x.mxik))||[];
   const valid=candidates.filter(y=>y.barcode);
-  const unique=[...new Set(valid.map(y=>y.barcode))];
-  const exact=valid.find(y=>x.barcode&&y.barcode===x.barcode);
-  const saved=tasnifMatches[key],choice=saved?valid.find(y=>y.barcode===saved):null;
+  const unique=[...new Set(valid.map(y=>tasnifNormCode(y.barcode)))];
+  const exact=valid.find(y=>x.barcode&&tasnifNormCode(y.barcode)===tasnifNormCode(x.barcode));
+  const saved=tasnifMatches[key],choice=saved?valid.find(y=>tasnifNormCode(y.barcode)===tasnifNormCode(saved)):null;
   const selected=choice||exact||(unique.length===1?valid[0]:null);
   const effectiveBarcode=x.barcode||selected?.barcode||'';
   const status=effectiveBarcode?'matched':unique.length?'manual':'missing';
