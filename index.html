@@ -143,12 +143,20 @@ function didoxPage(){
 }
 function dxStatus(d){
  const name=String(d.status_text||'').trim(),code=String(d.doc_status??'').trim();
- if(!name)return {label:code?'Kod: '+code+' (tekshirilmagan)':'Aniqlanmagan',type:'unknown'};
- const low=name.toLocaleLowerCase();
- if(/рад|отклон|reject|rad et/.test(low))return {label:name,type:'rejected'};
- if(/ожида|кутил|kutil|pending|await/.test(low))return {label:name,type:'pending'};
- if(/имзоланган|подписан|signed|tasdiqlangan/.test(low))return {label:name,type:'signed'};
- return {label:name,type:'unknown'};
+ const type=String(d.doctype||'002').padStart(3,'0');
+ // Official Didox EHF status codes; non-EHF document types are not assumed signed.
+ const ehfTypes=['001','002','008'];
+ const labels={'0':['Qoralama','unknown'],'1':['Hamkor imzosi kutilmoqda','pending'],'2':['Sizning imzoingiz kutilmoqda','pending'],'3':['Imzolangan','signed'],'4':['Imzolash rad etilgan','rejected'],'5':['O‘chirilgan','rejected'],'40':['Haqiqiy emas','rejected'],'50':['Soliq qo‘mitasi tomonidan bekor qilingan','rejected'],'55':['Qoralama o‘chirilgan','rejected'],'60':['Agent imzosi kutilmoqda','pending']};
+ if(ehfTypes.includes(type)&&Object.prototype.hasOwnProperty.call(labels,code)){
+  const [label,status]=labels[code];return {label,type:status};
+ }
+ if(name){
+  const low=name.toLocaleLowerCase();
+  if(/рад|отклон|reject|rad et|bekor|аннулир|недейств/.test(low))return {label:name,type:'rejected'};
+  if(/ожида|кутил|kutil|pending|await/.test(low))return {label:name,type:'pending'};
+  if(/имзоланган|подписан|signed|tasdiqlangan/.test(low))return {label:name,type:'signed'};
+ }
+ return {label:code?'Kod: '+code+' (aniqlanmagan)':'Aniqlanmagan',type:'unknown'};
 }
 function dxFiltered(){
  const inn=document.getElementById('dxFirm')?.value||'',from=document.getElementById('dxSearchFrom')?.value||'',to=document.getElementById('dxSearchTo')?.value||'',supplierInn=(document.getElementById('dxSearchInn')?.value||'').trim(),status=document.getElementById('dxStatusFilter')?.value||'';
