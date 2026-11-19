@@ -355,13 +355,14 @@ function tasnifSoliqExport(){
 function tasnifNameKey(v){return String(v||'').normalize('NFKC').toLocaleUpperCase().replace(/[«»"'‘’.,;:()\[\]{}]/g,' ').replace(/[‐‑‒–—−]/g,'-').replace(/\s+/g,' ').trim()}
 function tasnifUprIndex(){const byName=new Map(),byPc=new Map();for(const x of barcodeRows){const pc=barcodeKey(x.pc);if(!pc||!x.barcode)continue;if(!byPc.has(pc))byPc.set(pc,new Set());byPc.get(pc).add(String(x.barcode).trim())}for(const x of records[3]||[]){const name=tasnifNameKey(x.product),pc=barcodeKey(x.variantCode);if(!name||!pc)continue;const codes=byPc.get(pc);if(!codes)continue;if(!byName.has(name))byName.set(name,new Set());for(const code of codes)byName.get(name).add(code)}return byName}
 function tasnifUprCodes(name,index){return [...(index.get(tasnifNameKey(name))||[])]}
-function tasnifResolved(x,uprIndex){
+function tasnifResolved(x,uprIndex,context){
  const key=JSON.stringify([x.name,x.mxik,x.barcode]);
  const soliqCodes=[...new Set((tasnifSoliqByMxik.get(tasnifNormCode(x.mxik))||[]).map(y=>String(y.barcode||'').trim()).filter(Boolean))];
- const catalog=tasnifUprCatalog(),byName=new Map(catalog.map(item=>[item.key,item]));
+ const catalog=context?.catalog||tasnifUprCatalog(),byName=context?.byName||new Map(catalog.map(item=>[item.key,item]));
  const saved=tasnifMatches[key],savedCode=typeof saved==='string'?saved:saved?.barcode;
  const savedName=typeof saved==='object'?saved?.uprName:'';
- const chosen=(savedName&&byName.get(tasnifNameKey(savedName)))||byName.get(tasnifNameKey(x.name))||tasnifAutoUprCandidate(x.name,catalog);
+ const nameKey=tasnifNameKey(x.name);let chosen=(savedName&&byName.get(tasnifNameKey(savedName)))||byName.get(nameKey);
+ if(!chosen){if(context?.candidates?.has(nameKey))chosen=context.candidates.get(nameKey);else{chosen=tasnifAutoUprCandidate(x.name,catalog);context?.candidates?.set(nameKey,chosen)}}
  const codes=chosen?.codes||[];
  const validSaved=!!savedCode&&(soliqCodes.includes(savedCode)||codes.includes(savedCode));
  const code=x.barcode||(soliqCodes.length===1?soliqCodes[0]:validSaved?savedCode:codes.length===1?codes[0]:'');
@@ -386,15 +387,20 @@ function tasnifAutoBind(){
  tasnifDraw();
  alert('Soliq MXIK bo‘yicha bog‘landi: '+added+' ta. Didoxda kodi bor: '+existing+' ta. Tanlash kerak: '+ambiguous+' ta. Topilmadi: '+missing+' ta.');
 }
-function tasnifFiltered(){
+function tasnifFiltered(precomputed){
  const q=(document.getElementById('tasnifSearch')?.value||'').toLocaleLowerCase().trim(),filter=document.getElementById('tasnifFilter')?.value||'all';
- const uprIndex=tasnifUprIndex();return tasnifRows().map(x=>tasnifResolved(x,uprIndex)).filter(x=>(!q||[x.name,x.mxik,x.barcode,x.effectiveBarcode].some(v=>String(v||'').toLocaleLowerCase().includes(q)))&&(filter==='all'||filter==='mxik'&&x.mxik||filter==='barcode'&&x.effectiveBarcode||filter==='missing'&&!x.effectiveBarcode));
+ const all=precomputed||tasnifResolveAll();
+ return all.filter(x=>(!q||[x.name,x.mxik,x.barcode,x.effectiveBarcode].some(v=>String(v||'').toLocaleLowerCase().includes(q)))&&(filter==='all'||filter==='mxik'&&x.mxik||filter==='barcode'&&x.effectiveBarcode||filter==='missing'&&!x.effectiveBarcode));
+}
+function tasnifResolveAll(){
+ const catalog=tasnifUprCatalog(),context={catalog,byName:new Map(catalog.map(x=>[x.key,x])),candidates:new Map()};
+ return tasnifRows().map(x=>tasnifResolved(x,null,context));
 }
 function tasnifBarcodeChoices(x,i){const codes=[...new Set((tasnifSoliqByMxik.get(tasnifNormCode(x.mxik))||[]).map(y=>String(y.barcode||'').trim()).filter(Boolean))];if(!codes.length)return '—';return '<select data-barcode-row="'+i+'" title="Soliq bazasidagi shtrix-kodni tanlang"><option value="">'+codes.length+' ta kod — tanlang</option>'+codes.map(code=>'<option value="'+esc(code)+'">'+esc(code)+'</option>').join('')+'</select>'}
 function tasnifDraw(){
  const root=document.getElementById('tasnifResults');if(!root)return;
- const uprIndex=tasnifUprIndex(),all=tasnifRows().map(x=>tasnifResolved(x,uprIndex)),rows=tasnifFiltered();
- root.innerHTML='<div class="toolbar"><button type="button" class="primary" id="tasnifAutoBind">🔗 Soliq MXIKdan shtrix-kodlarni bog‘lash</button></div><div class="tasnif-stats"><span><b>'+all.length+'</b> mahsulot varianti</span><span><b>'+all.filter(x=>x.mxik).length+'</b> MXIK bor</span><span><b>'+all.filter(x=>x.effectiveBarcode).length+'</b> shtrix-kod bor</span><span><b>'+all.filter(x=>!x.effectiveBarcode).length+'</b> shtrix-kodsiz</span></div><div class="ehf-table-wrap"><table class="ehf-table tasnif-table"><thead><tr><th>№</th><th>Mahsulot nomi</th><th>MXIK</th><th>Shtrix-kod</th><th>Fakturalar soni</th><th>Jami miqdor</th><th>Manba</th></tr></thead><tbody>'+rows.map((x,i)=>'<tr><td>'+(i+1)+'</td><td>'+esc(x.name)+'</td><td>'+esc(x.mxik||'—')+'</td><td>'+esc(x.effectiveBarcode||'—')+'</td><td>'+x.docs+'</td><td>'+x.qty.toLocaleString('ru-RU')+'</td><td>'+esc(x.barcodeSource)+'</td></tr>').join('')+'</tbody></table></div><p class="muted">Topildi: '+rows.length+' ta. Soliqdan topilgan shtrix-kodlar lokal nomenklatura mosligi sifatida saqlanadi; asl Didox hujjati o‘zgarmaydi.</p>';document.getElementById('tasnifAutoBind').onclick=tasnifAutoBind;root.querySelectorAll('[data-barcode-row]').forEach(el=>el.onchange=()=>{const x=rows[Number(el.dataset.barcodeRow)];if(!x||!el.value)return;tasnifMatches[JSON.stringify([x.name,x.mxik,x.barcode])]=el.value;try{localStorage.setItem(tasnifMatchKey,JSON.stringify(tasnifMatches))}catch(e){alert('Saqlanmadi: '+e.message);return}tasnifDraw()});
+ const all=tasnifResolveAll(),rows=tasnifFiltered(all);
+ root.innerHTML='<div class="toolbar"><button type="button" class="primary" id="tasnifAutoBind">🔗 Soliq MXIKdan shtrix-kodlarni bog‘lash</button></div><div class="tasnif-stats"><span><b>'+all.length+'</b> mahsulot varianti</span><span><b>'+all.filter(x=>x.mxik).length+'</b> MXIK bor</span><span><b>'+all.filter(x=>x.effectiveBarcode).length+'</b> shtrix-kod bor</span><span><b>'+all.filter(x=>!x.effectiveBarcode).length+'</b> shtrix-kodsiz</span></div><div class="ehf-table-wrap"><table class="ehf-table tasnif-table"><thead><tr><th>№</th><th>Mahsulot nomi</th><th>MXIK</th><th>Shtrix-kod</th><th>Fakturalar soni</th><th>Jami miqdor</th><th>Manba</th></tr></thead><tbody>'+rows.slice(0,300).map((x,i)=>'<tr><td>'+(i+1)+'</td><td>'+esc(x.name)+'</td><td>'+esc(x.mxik||'—')+'</td><td>'+esc(x.effectiveBarcode||'—')+'</td><td>'+x.docs+'</td><td>'+x.qty.toLocaleString('ru-RU')+'</td><td>'+esc(x.barcodeSource)+'</td></tr>').join('')+'</tbody></table></div><p class="muted">Topildi: '+rows.length+' ta (tezkor ko‘rishda dastlabki 300 ta; eksportda barchasi). Soliqdan topilgan shtrix-kodlar lokal nomenklatura mosligi sifatida saqlanadi; asl Didox hujjati o‘zgarmaydi.</p>';document.getElementById('tasnifAutoBind').onclick=tasnifAutoBind;root.querySelectorAll('[data-barcode-row]').forEach(el=>el.onchange=()=>{const x=rows[Number(el.dataset.barcodeRow)];if(!x||!el.value)return;tasnifMatches[JSON.stringify([x.name,x.mxik,x.barcode])]=el.value;try{localStorage.setItem(tasnifMatchKey,JSON.stringify(tasnifMatches))}catch(e){alert('Saqlanmadi: '+e.message);return}tasnifDraw()});
 }
 function tasnifExport(){
  const rows=[['№','Mahsulot nomi','MXIK','Shtrix-kod','Fakturalar soni','Jami miqdor','Manba'],...tasnifFiltered().map((x,i)=>[i+1,x.name,x.mxik,x.effectiveBarcode,x.docs,x.qty,x.barcodeSource])];
