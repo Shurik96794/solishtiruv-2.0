@@ -326,9 +326,11 @@ function tasnifMatchRows(){
   if(!cache.has(nameKey))cache.set(nameKey,{barcode:tasnifBarcodeNameCandidate(x.name,catalog),name:tasnifAutoUprCandidate(x.name,catalog)});
   const found=cache.get(nameKey);
   const chosen=savedUpr||exact||found.barcode?.item||found.name;
-  const safeBarcode=chosen?.codes?.length===1&&
-   (found.barcode?.item?.key===chosen.key||savedUpr||exact)&&
-   (found.barcode?.item?.key===chosen.key?found.barcode.barcode:'')||'';
+  // UPR nomi tasdiqlangan yoki aynan mos bo‘lsa, uning yagona haqiqiy kodi olinadi.
+  // Taxminiy nom mosligida esa faqat 80%+ tekshiruvdan o‘tgan kod qo‘llanadi.
+  const uniqueCode=chosen?.codes?.length===1?String(chosen.codes[0]||'').trim():'';
+  const verifiedCandidate=!!(found.barcode&&found.barcode.item?.key===chosen?.key&&found.barcode.score>=0.8);
+  const safeBarcode=uniqueCode&&(savedUpr||exact||verifiedCandidate)?uniqueCode:'';
   if(chosen&&(!savedUpr||safeBarcode&&saved?.barcode!==safeBarcode)){
    tasnifMatches[key]={...(typeof saved==='object'&&saved?saved:{}),uprName:chosen.name,...(safeBarcode?{barcode:safeBarcode}:{})};
    tasnifMatchAutoDirty=true;
@@ -342,7 +344,9 @@ let tasnifMatchPage=0;const tasnifMatchPageSize=50;
 function tasnifMatchSave(row,barcode,uprName){
  if(!uprName)return false;
  const previous=tasnifMatches[row.key];
- const value={...(typeof previous==='object'&&previous?previous:{}),uprName};
+ const catalogItem=tasnifUprCatalog().find(x=>x.key===tasnifNameKey(uprName));
+ const selectedCode=catalogItem?.codes?.length===1?String(catalogItem.codes[0]||'').trim():'';
+ const value={...(typeof previous==='object'&&previous?previous:{}),uprName,barcode:selectedCode};
  tasnifMatches[row.key]=value;
  try{localStorage.setItem(tasnifMatchKey,JSON.stringify(tasnifMatches));return true}
  catch(e){alert('Moslikni saqlab bo‘lmadi: '+e.message);return false}
