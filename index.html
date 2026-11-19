@@ -179,7 +179,7 @@ const tasnifMatchKey='solishtiruv2_nomenclature_matches';
 let tasnifMatches={};try{tasnifMatches=JSON.parse(localStorage.getItem(tasnifMatchKey)||'{}')||{}}catch(e){tasnifMatches={}}
 
 function tasnifUprCatalog(){
- const byPc=new Map(),byName=new Map(),byBarcodeName=new Map();
+ const byPc=new Map(),byName=new Map(),byBarcodeName=new Map(),barcodeNameDisplay=new Map();
  for(const x of barcodeRows){
   const pc=barcodeKey(x.pc),code=String(x.barcode||'').trim();
   if(pc&&code){if(!byPc.has(pc))byPc.set(pc,new Set());byPc.get(pc).add(code)}
@@ -189,7 +189,7 @@ function tasnifUprCatalog(){
   const code=String(x.barcode||'').trim(),pc=barcodeKey(x.pc);
   if(!code)continue;
   const name=names.unique(names.byPc.get(pc))||names.unique(names.byId.get(String(x.tovarId??'').trim()));
-  if(name){const k=tasnifNameKey(name);if(!byBarcodeName.has(k))byBarcodeName.set(k,new Set());byBarcodeName.get(k).add(code)}
+  if(name){const k=tasnifNameKey(name);barcodeNameDisplay.set(k,name);if(!byBarcodeName.has(k))byBarcodeName.set(k,new Set());byBarcodeName.get(k).add(code)}
  }
  for(const x of records[3]||[]){
   const name=String(x.product||'').trim(),key=tasnifNameKey(name),pc=barcodeKey(x.variantCode);
@@ -198,6 +198,12 @@ function tasnifUprCatalog(){
   const item=byName.get(key);
   for(const code of byPc.get(pc)||[])item.codes.add(code);
   for(const code of byBarcodeName.get(key)||[])item.codes.add(code);
+ }
+ // Shtrix-kod bo‘limidagi nomlar UPR faylida bo‘lmasa ham qidiruvga kiradi.
+ for(const [key,codes] of byBarcodeName){
+  if(!byName.has(key))byName.set(key,{name:barcodeNameDisplay.get(key)||key,codes:new Set()});
+  const entry=byName.get(key);
+  for(const code of codes)entry.codes.add(code);
  }
  return [...byName.values()].map(x=>({name:x.name,key:tasnifNameKey(x.name),codes:[...x.codes]}));
 }
@@ -239,7 +245,7 @@ function tasnifPrepareCatalog(catalog){
  }
  prepared={byToken,items};tasnifPreparedCatalogCache.set(catalog,prepared);return prepared;
 }
-function normalizedPhoneBrand(name){const m=tasnifMatchNormalize(name).match(/\\b(samsung|honor|redmi|xiaomi|iphone|apple|infinix|tecno|oppo|vivo|realme|poco|huawei)\\b/);return m?m[1]:''}
+function normalizedPhoneBrand(name){const m=tasnifMatchNormalize(name).match(/\b(samsung|honor|redmi|xiaomi|iphone|apple|infinix|tecno|oppo|vivo|realme|poco|huawei)\b/);return m?m[1]:''}
 function tasnifBarcodeNameCandidate(name,catalog){
  const tokens=[...new Set(tasnifProductTokens(name))];if(tokens.length<2)return null;
  const prepared=tasnifPrepareCatalog(catalog);
