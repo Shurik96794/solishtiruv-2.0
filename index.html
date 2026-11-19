@@ -613,7 +613,7 @@ function ehfUprCompare(d){
  const matched=rows.filter(x=>x.didox>0&&x.upr>0&&!x.barcodeConflict&&!x.nameConflict&&Math.abs(x.diff)<0.000001&&Math.abs(x.amountDiff)<0.01).length;
  const complete=!!candidates.length&&!ambiguous&&rows.length>0&&matched===rows.length&&dxStatus(d).type!=='rejected';
  const reason=dxStatus(d).type==='rejected'?'Didox fakturasi rad etilgan — qabul qilish mumkin emas':ambiguous?'Bir nechta UPR kirimi bir xil shartlarga mos — hujjatni aniqlash kerak':!linked.length?'Ta’minotchi STIR bilan bog‘lanmagan':!candidates.length?'Mos UPR kirimi topilmadi (faktura raqami yoki ta’minotchi, sana va summa bo‘yicha)':complete?'Qabul qilish mumkin':'Mahsulot nomi, o‘lchami, shtrix-kod, miqdor yoki summada farq bor';
- return {linked:linked.length>0,uprCount:candidates.length,rows,matched,complete,reason,method};
+ return {linked:linked.length>0,linkedNames:linked.map(x=>x.name),uprCount:candidates.length,rows,matched,complete,reason,method};
 }
 const ehfReviewKey='solishtiruv2_ehf_review';
 function ehfReviewAll(){try{return JSON.parse(localStorage.getItem(ehfReviewKey)||'{}')||{}}catch(e){return {}}}
@@ -624,7 +624,7 @@ function ehfUprCompareDialog(d){
  const decision=ehfReviewGet(d);
  const fmt=n=>Number(n||0).toLocaleString('ru-RU');
  dlg.innerHTML='<h3>🔍 Didox № '+esc(d.f_no||'')+' ↔ UPR kirimlarini solishtirish</h3><p class="muted">Avval faktura raqami tekshiriladi. Raqam bo‘lmasa, faqat bitta aniq ta’minotchi/do‘kon/sana/summa guruhiga mos kirim ko‘riladi. Bir nechta nomzod bo‘lsa tasdiqlanmaydi.</p>'+
- '<p><b>Ta’minotchi:</b> '+esc(d.supplier||'')+' · <b>STIR:</b> '+esc(d.s_inn||'')+'</p>'+
+ '<p><b>Didox yuridik korxonasi:</b> '+esc(d.supplier||'')+' · <b>STIR:</b> '+esc(d.s_inn||'')+'</p><p><b>STIR orqali bog‘langan UPR ta’minotchilari:</b> '+esc(result.linkedNames.join(', ')||'Topilmadi — Ta’minotchilar bo‘limida STIRni biriktiring')+'</p>'+
  '<p><b>Topish usuli:</b> '+esc(result.method||'Topilmadi')+' · <b>Natija:</b> <strong>'+esc(result.reason)+'</strong> · <b>To‘liq mos qatorlar:</b> '+result.matched+'/'+result.rows.length+'</p>'+
  '<div style="overflow:auto;max-height:58vh"><table><thead><tr><th>Mahsulot</th><th>Shtrix-kod</th><th>Didox miqdor</th><th>UPR miqdor</th><th>Farq</th><th>Didox summa</th><th>UPR summa</th><th>Summa farqi</th></tr></thead><tbody>'+
  result.rows.map(x=>'<tr><td>'+esc(x.name)+'</td><td>'+esc(x.code||'—')+'</td><td>'+fmt(x.didox)+'</td><td>'+fmt(x.upr)+'</td><td>'+fmt(x.diff)+'</td></tr>').join('')+'</tbody></table></div>'+
