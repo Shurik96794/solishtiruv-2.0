@@ -166,11 +166,25 @@ const tasnifMatchKey='solishtiruv2_nomenclature_matches';
 let tasnifMatches={};try{tasnifMatches=JSON.parse(localStorage.getItem(tasnifMatchKey)||'{}')||{}}catch(e){tasnifMatches={}}
 
 function tasnifUprCatalog(){
- const byPc=new Map(),byName=new Map();
- for(const x of barcodeRows){const pc=barcodeKey(x.pc),code=String(x.barcode||'').trim();if(!pc||!code)continue;if(!byPc.has(pc))byPc.set(pc,new Set());byPc.get(pc).add(code)}
- for(const x of records[3]||[]){const name=String(x.product||'').trim(),key=tasnifNameKey(name),pc=barcodeKey(x.variantCode);if(!key)continue;
+ const byPc=new Map(),byName=new Map(),byBarcodeName=new Map();
+ for(const x of barcodeRows){
+  const pc=barcodeKey(x.pc),code=String(x.barcode||'').trim();
+  if(pc&&code){if(!byPc.has(pc))byPc.set(pc,new Set());byPc.get(pc).add(code)}
+ }
+ const names=barcodeNameIndex();
+ for(const x of barcodeRows){
+  const code=String(x.barcode||'').trim(),pc=barcodeKey(x.pc);
+  if(!code)continue;
+  const name=names.unique(names.byPc.get(pc))||names.unique(names.byId.get(String(x.tovarId??'').trim()));
+  if(name){const k=tasnifNameKey(name);if(!byBarcodeName.has(k))byBarcodeName.set(k,new Set());byBarcodeName.get(k).add(code)}
+ }
+ for(const x of records[3]||[]){
+  const name=String(x.product||'').trim(),key=tasnifNameKey(name),pc=barcodeKey(x.variantCode);
+  if(!key)continue;
   if(!byName.has(key))byName.set(key,{name,codes:new Set()});
-  const item=byName.get(key);for(const code of byPc.get(pc)||[])item.codes.add(code);
+  const item=byName.get(key);
+  for(const code of byPc.get(pc)||[])item.codes.add(code);
+  for(const code of byBarcodeName.get(key)||[])item.codes.add(code);
  }
  return [...byName.values()].map(x=>({name:x.name,key:tasnifNameKey(x.name),codes:[...x.codes]}));
 }
@@ -200,21 +214,27 @@ function tasnifMatchColor(v){
  return '';
 }
 function tasnifAutoUprCandidate(name,catalog){
- const tokens=tasnifProductTokens(name),set=new Set(tokens);if(tokens.length<2)return null;
+ const tokens=tasnifProductTokens(name);if(tokens.length<2)return null;
  const dimension=tasnifMatchDimensions(name),memory=tasnifMatchMemory(name),color=tasnifMatchColor(name);
- const models=tokens.filter(t=>/\d/.test(t)&&/[a-z]/.test(t)&&!t.includes('x')&&!/^\d+\/\d+$/.test(t));
+ const isPhone=/\b(samsung|honor|redmi|xiaomi|iphone|apple|infinix|tecno|oppo|vivo|realme|poco|huawei)\b/i.test(tasnifMatchNormalize(name));
+ const modelTokens=tokens.filter(t=>/\d/.test(t)&&/[a-z]/.test(t)&&!/^sm[a-z0-9]+$/.test(t)&&!/^\d+\/\d+$/.test(t));
  const scored=[];
  for(const item of catalog){
   if(item.codes.length!==1)continue;
   const other=tasnifProductTokens(item.name),otherSet=new Set(other);
   const od=tasnifMatchDimensions(item.name),om=tasnifMatchMemory(item.name),oc=tasnifMatchColor(item.name);
   if((dimension&&od&&dimension!==od)||(memory&&om&&memory!==om)||(color&&oc&&color!==oc))continue;
-  if(models.length&&models.some(t=>!otherSet.has(t)))continue;
-  const common=tokens.filter(t=>otherSet.has(t)).length;
-  let similarity=common/Math.max(tokens.length,other.length,1);
-  if(dimension&&od&&dimension===od)similarity=Math.min(1,similarity*.75+.25);
-  if(memory&&om&&memory===om)similarity=Math.min(1,similarity*.85+.15);
-  if(common>=2&&similarity>=0.80)scored.push({item,similarity});
+  if(isPhone){
+   if(memory&&!om)continue;
+   if(color&&!oc)continue;
+   if(modelTokens.length&&modelTokens.some(t=>!otherSet.has(t)))continue;
+  }
+  const cleaned=tokens.filter(t=>!/^sm[a-z0-9]+$/.test(t)&&!/^\d{3,4}$/.test(t));
+  const common=cleaned.filter(t=>otherSet.has(t)).length;
+  let similarity=common/Math.max(cleaned.length,other.length,1);
+  if(memory&&om&&memory===om)similarity=Math.min(1,similarity*.8+.2);
+  if(color&&oc&&color===oc)similarity=Math.min(1,similarity*.9+.1);
+  if(common>=2&&similarity>=0.78)scored.push({item,similarity});
  }
  scored.sort((a,b)=>b.similarity-a.similarity);
  return scored.length&&(scored.length===1||scored[0].similarity>scored[1].similarity+0.12)?scored[0].item:null;
