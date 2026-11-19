@@ -776,6 +776,7 @@ function removeSupplier(id){if(supplierEntities().some(x=>x.supplierId===id)){al
 function downloadData(name,data,type){let u=URL.createObjectURL(new Blob([data],{type})),a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)}
 
 render();
+tasnifSoliqLoad();
 uprLoad();
 barcodeLoad();
 </script></body></html>
