@@ -330,7 +330,8 @@ function tasnifMatchRows(){
   // Taxminiy nom mosligida esa faqat 80%+ tekshiruvdan o‘tgan kod qo‘llanadi.
   const uniqueCode=chosen?.codes?.length===1?String(chosen.codes[0]||'').trim():'';
   const verifiedCandidate=!!(found.barcode&&found.barcode.item?.key===chosen?.key&&found.barcode.score>=0.8);
-  const safeBarcode=uniqueCode&&(savedUpr||exact||verifiedCandidate)?uniqueCode:'';
+  const savedCode=typeof saved==='object'?String(saved?.barcode||'').trim():'';
+  const safeBarcode=uniqueCode&&(savedUpr||exact||verifiedCandidate)?uniqueCode:(savedCode&&chosen?.codes?.includes(savedCode)?savedCode:'');
   if(chosen&&(!savedUpr||safeBarcode&&saved?.barcode!==safeBarcode)){
    tasnifMatches[key]={...(typeof saved==='object'&&saved?saved:{}),uprName:chosen.name,...(safeBarcode?{barcode:safeBarcode}:{})};
    tasnifMatchAutoDirty=true;
@@ -338,7 +339,8 @@ function tasnifMatchRows(){
   return {...x,key,uprName:chosen?.name||'',uprCodes:chosen?.codes||[],effectiveBarcode:safeBarcode,matchPercent:found.barcode&&found.barcode.item?.key===chosen?.key?Math.round(found.barcode.score*100):null,status:safeBarcode?'matched':chosen?'manual':'missing',exact:!!exact,auto:!!chosen&&!savedUpr&&!exact};
  });
  if(tasnifMatchAutoDirty){try{localStorage.setItem(tasnifMatchKey,JSON.stringify(tasnifMatches));tasnifMatchAutoDirty=false}catch(e){console.warn('Matching saqlash xatosi',e)}}
- return output;
+ // Shtrix-kodi ishonchli biriktirilgan mahsulot ishchi ro‘yxatda qolmasin.
+ return output.filter(x=>!x.effectiveBarcode);
 }
 let tasnifMatchPage=0;const tasnifMatchPageSize=50;
 function tasnifMatchSave(row,barcode,uprName){
