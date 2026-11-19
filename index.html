@@ -1121,12 +1121,13 @@ async function importSupplierExcel(e){
   const norm=x=>String(x??'').trim().toLocaleLowerCase().replace(/[’‘ʻ`']/g,'').replace(/\s+/g,' ');
   const isSupplier=x=>['taminotchi','ta minotchi','main taminotchi nomi'].includes(norm(x));
   const isEntity=x=>['mchj nomi','yuridik korxona nomi','mchj'].includes(norm(x));
-  const isInn=x=>['stir','inn','iin','mchj stir','korxona stir','soliq raqami'].includes(norm(x));
+  const isInn=x=>['stir','inn','iin','инн','стир','mchj stir','korxona stir','soliq raqami','идентификационный номер налогоплательщика'].includes(norm(x));
   const headerAt=rows.findIndex(row=>row.some(isSupplier)&&row.some(isEntity));
   if(headerAt<0)throw Error('Ta’minotchi va MCHJ nomi ustunlari topilmadi.');
-  const head=rows[headerAt],si=head.findIndex(isSupplier),mi=head.findIndex(isEntity),ii=head.findIndex(isInn);
-  const incoming=rows.slice(headerAt+1).filter(row=>String(row[si]??'').trim()).map(row=>({name:String(row[si]).trim(),entity:String(row[mi]??'').trim(),inn:String(ii>=0?row[ii]??'':'').trim().replace(/\s/g,'')}));
+  const head=rows[headerAt],si=head.findIndex(isSupplier),mi=head.findIndex(isEntity);let ii=head.findIndex(isInn);if(ii<0&&head.length>=3&&si!==2&&mi!==2)ii=2;if(ii<0)throw Error('STIR/INN ustuni topilmadi. Uchinchi ustunni STIR yoki ИНН deb nomlang.');
+  const incoming=rows.slice(headerAt+1).filter(row=>String(row[si]??'').trim()).map(row=>({name:String(row[si]).trim(),entity:String(row[mi]??'').trim(),inn:String(row[ii]??'').trim().replace(/[\s\u00a0]/g,'').replace(/\.0$/,'')}));
   if(!incoming.length)throw Error('Import uchun ma’lumot topilmadi.');
+  if(!incoming.some(x=>x.inn))throw Error('Excel STIR ustunida hech qanday raqam topilmadi. Uchinchi ustunni tekshiring.');
   for(const row of incoming)if(row.inn&&!/^\d{9}$/.test(row.inn))throw Error(row.name+' / '+row.entity+': STIR 9 ta raqamdan iborat bo‘lishi kerak ('+row.inn+').');
   if(!confirm(incoming.length+' ta qator topildi. Mavjud STIRlarni saqlagan holda yangi bog‘lanishlar qo‘shilsinmi?'))return;
   let newS=0,newE=0,updated=0,duplicates=0,conflicts=0;
