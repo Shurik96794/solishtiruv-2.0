@@ -333,14 +333,18 @@ function tasnifMatchDraw(){
   const terms=new Set(nameKey.split(' ').filter(t=>t.length>2));
   const candidates=catalog.map(y=>({...y,score:y.key===nameKey?100:y.key.includes(nameKey)||nameKey.includes(y.key)?80:y.key.split(' ').filter(t=>terms.has(t)).length})).filter(y=>y.score>0).sort((a,b)=>b.score-a.score).slice(0,25);
   if(x.uprName&&!candidates.some(y=>y.key===tasnifNameKey(x.uprName))){const found=catalog.find(y=>y.key===tasnifNameKey(x.uprName));if(found)candidates.unshift({...found,score:100})}
-  const panel=root.querySelector('#tasnifUprReview');
+  root.querySelector('#tasnifUprInlineRow')?.remove();
+  const inlineRow=document.createElement('tr');inlineRow.id='tasnifUprInlineRow';
+  const inlineCell=document.createElement('td');inlineCell.colSpan=6;inlineCell.style.padding='12px 16px';
+  inlineRow.appendChild(inlineCell);el.closest('tr').insertAdjacentElement('afterend',inlineRow);
+  const panel=inlineCell;
   panel.innerHTML='<div class="panel" style="margin-top:12px"><h3>UPR nomenklaturasini tanlash</h3><p><b>Didox:</b> '+esc(x.name)+'</p><p class="muted">O‘xshash nomlar faqat taklif qilinadi. Tasdiqlamaguningizcha biriktirilmaydi.</p><label>UPR mahsuloti <select id="uprCandidate"><option value="">— Tanlang —</option>'+candidates.map((y,i)=>'<option value="'+i+'" '+(y.key===tasnifNameKey(x.uprName)?'selected':'')+'>'+esc(y.name)+'</option>').join('')+'</select></label><label>Shtrix-kod <select id="uprCandidateCode"></select></label><button class="primary" id="uprConfirm">✓ Moslikni saqlash</button> <button class="secondary" id="uprClose">Yopish</button></div>';
   const sel=panel.querySelector('#uprCandidate'),codes=panel.querySelector('#uprCandidateCode');
   function update(){const y=sel.value===''?null:candidates[Number(sel.value)];codes.innerHTML=sel.value===''?'<option value="">Avval UPR nomini tanlang</option>':y.codes.map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join('')}
   sel.onchange=update;update();
-  panel.querySelector('#uprClose').onclick=()=>panel.innerHTML='';
+  panel.querySelector('#uprClose').onclick=()=>inlineRow.remove();
   panel.querySelector('#uprConfirm').onclick=()=>{if(sel.value===''){alert('UPR mahsulotini tanlang');return}const y=candidates[Number(sel.value)];if(!codes.value||!y.codes.includes(codes.value)){alert('UPR bazasidagi haqiqiy shtrix-kodni tanlang');return}if(tasnifMatchSave(x,codes.value,y.name))tasnifMatchDraw()};
-  panel.scrollIntoView({behavior:'smooth',block:'nearest'});
+  inlineRow.scrollIntoView({behavior:'smooth',block:'nearest'});
  });
 }
 function tasnifMatchExport(){
