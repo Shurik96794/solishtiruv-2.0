@@ -252,7 +252,7 @@ function tasnifAutoUprCandidate(name,catalog){
  let candidates=null;
  for(const token of keys){
   const list=prepared.byToken.get(token)||[];
-  if(!candidates||list.length<candidates.length)candidates=list;
+  if(list.length&&(!candidates||list.length<candidates.length))candidates=list;
  }
  if(!candidates?.length)return null;
  const scored=[];
@@ -315,7 +315,7 @@ function tasnifMatchDraw(){
  const from=tasnifMatchPage*tasnifMatchPageSize,visible=rows.slice(from,from+tasnifMatchPageSize);
  root.innerHTML='<div class="toolbar"><button type="button" class="primary" id="tasnifUprMatch">↻ Avtomatik mosliklarni qayta tekshirish</button><span class="muted">Didox shtrix-kodi → Soliq MXIK → UPR nomenklaturasi → UPR shtrix-kodi. Ishonchli yagona mosliklar avtomatik saqlanadi.</span></div>'+
  '<div class="tasnif-stats"><span><b>'+all.length+'</b> jarayonda</span><span><b>'+all.filter(x=>!!x.uprName).length+'</b> UPR taklif bor</span><span><b>'+all.filter(x=>x.status==='manual').length+'</b> tekshirish kerak</span><span><b>'+all.filter(x=>x.status==='missing').length+'</b> mos topilmadi</span></div>'+
- '<div class="ehf-table-wrap"><table class="ehf-table tasnif-table"><thead><tr><th>№</th><th>Didox mahsulot nomi</th><th>UPR nomenklaturasi</th><th>UPR shtrix-kodi</th><th>Holat</th><th>Amal</th></tr></thead><tbody>'+
+ '<div class="ehf-table-wrap"><table class="ehf-table tasnif-table"><thead><tr><th>№</th><th>Didox mahsulot nomi</th><th style="width:280px;min-width:260px">Moslashtirish oynasi</th><th>UPR nomenklaturasi</th><th>UPR shtrix-kodi</th><th>Holat</th><th>Amal</th></tr></thead><tbody>'+
  visible.map((x,i)=>'<tr><td>'+(from+i+1)+'</td><td>'+esc(x.name)+'</td><td>'+esc(x.uprName||'—')+'</td><td>'+esc(x.effectiveBarcode||'—')+'</td><td>'+(x.status==='matched'?(x.auto?'✅ Avtomatik UPR mos':'✅ Nom va kod mos'):x.status==='manual'?'⚠ Kod tanlash kerak':'❌ UPR mosligi topilmadi')+'</td><td><button class="secondary" data-upr-review="'+i+'">Ko‘rish / tanlash</button></td></tr>').join('')+
  '</tbody></table></div><div class="toolbar"><button class="secondary" id="matchPrev" '+(tasnifMatchPage===0?'disabled':'')+'>← Oldingi</button><b>'+(tasnifMatchPage+1)+' / '+pages+' sahifa</b><button class="secondary" id="matchNext" '+(tasnifMatchPage>=pages-1?'disabled':'')+'>Keyingi →</button></div><div id="tasnifUprReview"></div>';
  root.querySelector('#tasnifUprMatch').onclick=()=>{
@@ -333,18 +333,15 @@ function tasnifMatchDraw(){
   const terms=new Set(nameKey.split(' ').filter(t=>t.length>2));
   const candidates=catalog.map(y=>({...y,score:y.key===nameKey?100:y.key.includes(nameKey)||nameKey.includes(y.key)?80:y.key.split(' ').filter(t=>terms.has(t)).length})).filter(y=>y.score>0).sort((a,b)=>b.score-a.score).slice(0,25);
   if(x.uprName&&!candidates.some(y=>y.key===tasnifNameKey(x.uprName))){const found=catalog.find(y=>y.key===tasnifNameKey(x.uprName));if(found)candidates.unshift({...found,score:100})}
-  root.querySelector('#tasnifUprInlineRow')?.remove();
-  const inlineRow=document.createElement('tr');inlineRow.id='tasnifUprInlineRow';
-  const inlineCell=document.createElement('td');inlineCell.colSpan=6;inlineCell.style.padding='12px 16px';
-  inlineRow.appendChild(inlineCell);el.closest('tr').insertAdjacentElement('afterend',inlineRow);
-  const panel=inlineCell;
-  panel.innerHTML='<div class="panel" style="margin-top:12px"><h3>UPR nomenklaturasini tanlash</h3><p><b>Didox:</b> '+esc(x.name)+'</p><p class="muted">O‘xshash nomlar faqat taklif qilinadi. Tasdiqlamaguningizcha biriktirilmaydi.</p><label>UPR mahsuloti <select id="uprCandidate"><option value="">— Tanlang —</option>'+candidates.map((y,i)=>'<option value="'+i+'" '+(y.key===tasnifNameKey(x.uprName)?'selected':'')+'>'+esc(y.name)+'</option>').join('')+'</select></label><label>Shtrix-kod <select id="uprCandidateCode"></select></label><button class="primary" id="uprConfirm">✓ Moslikni saqlash</button> <button class="secondary" id="uprClose">Yopish</button></div>';
+  root.querySelectorAll('.upr-editor-slot').forEach(cell=>cell.innerHTML='');
+  const panel=el.closest('tr').querySelector('.upr-editor-slot');
+  panel.innerHTML='<div class="panel" style="margin:0;padding:10px"><h3 style="font-size:14px">UPR nomenklaturasini tanlash</h3><p><b>Didox:</b> '+esc(x.name)+'</p><p class="muted">O‘xshash nomlar faqat taklif qilinadi. Tasdiqlamaguningizcha biriktirilmaydi.</p><label>UPR mahsuloti <select id="uprCandidate"><option value="">— Tanlang —</option>'+candidates.map((y,i)=>'<option value="'+i+'" '+(y.key===tasnifNameKey(x.uprName)?'selected':'')+'>'+esc(y.name)+'</option>').join('')+'</select></label><label>Shtrix-kod <select id="uprCandidateCode"></select></label><button class="primary" id="uprConfirm">✓ Moslikni saqlash</button> <button class="secondary" id="uprClose">Yopish</button></div>';
   const sel=panel.querySelector('#uprCandidate'),codes=panel.querySelector('#uprCandidateCode');
   function update(){const y=sel.value===''?null:candidates[Number(sel.value)];codes.innerHTML=sel.value===''?'<option value="">Avval UPR nomini tanlang</option>':y.codes.map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join('')}
   sel.onchange=update;update();
-  panel.querySelector('#uprClose').onclick=()=>inlineRow.remove();
+  panel.querySelector('#uprClose').onclick=()=>panel.innerHTML='';
   panel.querySelector('#uprConfirm').onclick=()=>{if(sel.value===''){alert('UPR mahsulotini tanlang');return}const y=candidates[Number(sel.value)];if(!codes.value||!y.codes.includes(codes.value)){alert('UPR bazasidagi haqiqiy shtrix-kodni tanlang');return}if(tasnifMatchSave(x,codes.value,y.name))tasnifMatchDraw()};
-  inlineRow.scrollIntoView({behavior:'smooth',block:'nearest'});
+  panel.scrollIntoView({behavior:'smooth',block:'nearest'});
  });
 }
 function tasnifMatchExport(){
