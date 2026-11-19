@@ -239,6 +239,7 @@ function tasnifPrepareCatalog(catalog){
  }
  prepared={byToken,items};tasnifPreparedCatalogCache.set(catalog,prepared);return prepared;
 }
+function normalizedPhoneBrand(name){const m=tasnifMatchNormalize(name).match(/\\b(samsung|honor|redmi|xiaomi|iphone|apple|infinix|tecno|oppo|vivo|realme|poco|huawei)\\b/);return m?m[1]:''}
 function tasnifAutoUprCandidate(name,catalog){
  const tokens=tasnifProductTokens(name);if(tokens.length<2)return null;
  const prepared=tasnifPrepareCatalog(catalog);
@@ -255,6 +256,17 @@ function tasnifAutoUprCandidate(name,catalog){
   if(list.length&&(!candidates||list.length<candidates.length))candidates=list;
  }
  if(!candidates?.length)return null;
+ // Telefon nomlari: bir xil brend + model + xotira + rang bo‘lsa, qo‘shimcha so‘zlar moslikni pasaytirmaydi.
+ if(isPhone&&modelTokens.length&&memory&&color){
+  const brand=normalizedPhoneBrand(name);
+  const strict=candidates.filter(e=>
+   (!brand||normalizedPhoneBrand(e.item.name)===brand)&&
+   e.memory===memory&&e.color===color&&
+   modelTokens.every(t=>e.tokenSet.has(t))&&
+   (!dimension||!e.dimension||dimension===e.dimension)
+  );
+  if(strict.length===1)return strict[0].item;
+ }
  const scored=[];
  for(const entry of candidates){
   const {item,tokens:other,tokenSet:otherSet,dimension:od,memory:om,color:oc}=entry;
