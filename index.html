@@ -241,49 +241,40 @@ function tasnifPrepareCatalog(catalog){
 }
 function normalizedPhoneBrand(name){const m=tasnifMatchNormalize(name).match(/\\b(samsung|honor|redmi|xiaomi|iphone|apple|infinix|tecno|oppo|vivo|realme|poco|huawei)\\b/);return m?m[1]:''}
 function tasnifAutoUprCandidate(name,catalog){
- const tokens=tasnifProductTokens(name);if(tokens.length<2)return null;
+ const tokens=tasnifProductTokens(name);if(!tokens.length)return null;
  const prepared=tasnifPrepareCatalog(catalog);
- const dimension=tasnifMatchDimensions(name),memory=tasnifMatchMemory(name),color=tasnifMatchColor(name);
- const isPhone=/\b(samsung|honor|redmi|xiaomi|iphone|apple|infinix|tecno|oppo|vivo|realme|poco|huawei)\b/i.test(tasnifMatchNormalize(name));
- const modelTokens=tokens.filter(t=>/\d/.test(t)&&/[a-z]/.test(t)&&!/^sm[a-z0-9]+$/.test(t)&&!/^\d+\/\d+$/.test(t));
- const cleaned=tokens.filter(t=>!/^sm[a-z0-9]+$/.test(t)&&!/^\d{3,4}$/.test(t));
- // Model tokeni bor bo'lsa, faqat shu modeldagi nomlarni tekshiramiz.
- // Model yo'q bo'lsa, eng kam uchraydigan mazmunli token bilan toraytiramiz.
- const keys=modelTokens.length?modelTokens:cleaned;
- let candidates=null;
- for(const token of keys){
-  const list=prepared.byToken.get(token)||[];
-  if(list.length&&(!candidates||list.length<candidates.length))candidates=list;
- }
- if(!candidates?.length)return null;
- // Telefon nomlari: bir xil brend + model + xotira + rang bo‘lsa, qo‘shimcha so‘zlar moslikni pasaytirmaydi.
- if(isPhone&&modelTokens.length&&memory&&color){
-  const brand=normalizedPhoneBrand(name);
-  const strict=candidates.filter(e=>
-   (!brand||normalizedPhoneBrand(e.item.name)===brand)&&
-   e.memory===memory&&e.color===color&&
-   modelTokens.every(t=>e.tokenSet.has(t))&&
-   (!dimension||!e.dimension||dimension===e.dimension)
-  );
-  if(strict.length===1)return strict[0].item;
- }
+ const norm=tasnifMatchNormalize(name),dimension=tasnifMatchDimensions(name),memory=tasnifMatchMemory(name),color=tasnifMatchColor(name),brand=normalizedPhoneBrand(name);
+ const isPhone=!!brand;
+ const modelTokens=tokens.filter(t=>/\d/.test(t)&&/[a-z]/.test(t)&&!/^sm[a-z0-9]+$/.test(t));
+ const meaningful=tokens.filter(t=>t!==memory&&!['pro','plus','max','ultra','dekor','burchakli'].includes(t));
+ const anchors=modelTokens.length?modelTokens:meaningful;
+ const pools=anchors.map(t=>prepared.byToken.get(t)||[]).filter(list=>list.length);
+ if(!pools.length)return null;
+ const candidates=pools.sort((x,y)=>x.length-y.length)[0];
  const scored=[];
  for(const entry of candidates){
-  const {item,tokens:other,tokenSet:otherSet,dimension:od,memory:om,color:oc}=entry;
-  if((dimension&&od&&dimension!==od)||(memory&&om&&memory!==om)||(color&&oc&&color!==oc))continue;
+  const {item,tokenSet,dimension:od,memory:om,color:oc}=entry;
+  if(dimension&&od&&dimension!==od)continue;
+  if(memory&&om&&memory!==om)continue;
+  if(color&&oc&&color!==oc)continue;
   if(isPhone){
-   if(memory&&!om)continue;
-   if(color&&!oc)continue;
-   if(modelTokens.length&&modelTokens.some(t=>!otherSet.has(t)))continue;
+   if(normalizedPhoneBrand(item.name)!==brand)continue;
+   if(modelTokens.length&&!modelTokens.every(t=>tokenSet.has(t)))continue;
+   if(memory&&om!==memory)continue;
+   if(color&&oc!==color)continue;
+   if(['pro','plus','ultra','max'].some(q=>tokens.includes(q)!==tokenSet.has(q)))continue;
   }
-  const common=cleaned.filter(t=>otherSet.has(t)).length;
-  let similarity=common/Math.max(cleaned.length,other.length,1);
-  if(memory&&om&&memory===om)similarity=Math.min(1,similarity*.8+.2);
-  if(color&&oc&&color===oc)similarity=Math.min(1,similarity*.9+.1);
-  if(common>=2&&similarity>=0.78)scored.push({item,similarity});
+  const common=tokens.filter(t=>tokenSet.has(t)).length;
+  const union=new Set([...tokens,...entry.tokens]).size;
+  const score=common/Math.max(union,1);
+  if(isPhone&&modelTokens.length&&memory&&color){
+   if(common>=3)scored.push({item,score:score+1});
+  }else if(common>=2&&score>=0.62){
+   scored.push({item,score});
+  }
  }
- scored.sort((a,b)=>b.similarity-a.similarity);
- return scored.length&&(scored.length===1||scored[0].similarity>scored[1].similarity+0.12)?scored[0].item:null;
+ scored.sort((x,y)=>y.score-x.score);
+ return scored.length&&(scored.length===1||scored[0].score>scored[1].score+0.12)?scored[0].item:null;
 }
 let tasnifMatchAutoDirty=false;
 function tasnifMatchRows(){
