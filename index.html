@@ -1136,9 +1136,9 @@ async function importSupplierExcel(e){
    if(!supplier){supplier={id:crypto.randomUUID(),name:row.name,phone:'',note:''};(records.suppliers??=[]).push(supplier);newS++}
    if(!row.entity&&!row.inn)continue;
    const entities=supplierEntities();
-   const byInn=row.inn?entities.find(x=>String(x.inn||'').trim()===row.inn):null;
-   if(byInn&&byInn.supplierId!==supplier.id){conflicts++;continue}
-   let existing=byInn||entities.find(x=>x.supplierId===supplier.id&&norm(x.name)===norm(row.entity));
+   // Bir STIR bir nechta MAIN ta’minotchisiga biriktirilishi mumkin.
+   // Dublikat faqat ayni MAIN ta’minotchi doirasida tekshiriladi.
+   let existing=entities.find(x=>x.supplierId===supplier.id&&row.inn&&String(x.inn||'').trim()===row.inn)||entities.find(x=>x.supplierId===supplier.id&&norm(x.name)===norm(row.entity));
    if(existing){
     if(row.inn&&existing.inn&&String(existing.inn)!==row.inn){conflicts++;continue}
     if(row.inn&&!existing.inn){existing.inn=row.inn;updated++}else duplicates++;
@@ -1148,7 +1148,7 @@ async function importSupplierExcel(e){
    }
   }
   save();render();
-  alert('Import yakunlandi. Yangi ta’minotchilar: '+newS+'; yangi MCHJ: '+newE+'; STIR to‘ldirildi: '+updated+'; mavjud: '+duplicates+'; ziddiyatli (o‘tkazilmadi): '+conflicts+'.');
+  alert('Import yakunlandi. Yangi ta’minotchilar: '+newS+'; yangi MCHJ bog‘lanishlari: '+newE+'; STIR to‘ldirildi: '+updated+'; mavjud: '+duplicates+'; bir ta’minotchi ichidagi STIR ziddiyatlari: '+conflicts+'. Bir STIR bir nechta ta’minotchida bo‘lishi mumkin.');
  }catch(err){alert('Excel import xatosi: '+err.message)}
  finally{e.target.value=''}
 }
