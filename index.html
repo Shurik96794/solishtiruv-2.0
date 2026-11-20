@@ -407,6 +407,8 @@ function tasnifMatchRows(){
  const catalog=tasnifUprCatalog().filter(x=>!tasnifIsKPrefixProduct(x.name)),byName=new Map(catalog.map(x=>[x.key,x])),cache=new Map();
  const output=tasnifRows().filter(x=>{
   if(tasnifBarcode13(x.barcode))return false;
+  // Didox kodi 13 xonadan qisqa bo‘lsa, asl kodni saqlagan holda tekshiruvga chiqaramiz.
+  if(/^\d{1,12}$/.test(String(x.barcode||'').trim()))return true;
   const codes=tasnifSoliqValidCodes(x.mxik);
   return codes.length===0;
  }).map(x=>{
@@ -431,7 +433,7 @@ function tasnifMatchRows(){
  });
  if(tasnifMatchAutoDirty){try{localStorage.setItem(tasnifMatchKey,JSON.stringify(tasnifMatches));tasnifMatchAutoDirty=false}catch(e){console.warn('Matching saqlash xatosi',e)}}
  // Shtrix-kodi ishonchli biriktirilgan mahsulot ishchi ro‘yxatda qolmasin.
- return output.filter(x=>!x.effectiveBarcode);
+ return output.filter(x=>/^\d{1,12}$/.test(String(x.barcode||'').trim())||!x.effectiveBarcode);
 }
 let tasnifMatchPage=0;const tasnifMatchPageSize=50;
 function tasnifMatchSave(row,barcode,uprName){
@@ -448,13 +450,13 @@ function tasnifMatchDraw(){
  const root=document.getElementById('tasnifMatchResults');if(!root)return;
  const all=tasnifMatchRows(),q=(document.getElementById('tasnifMatchSearch')?.value||'').toLocaleLowerCase().trim();
  const f=document.getElementById('tasnifMatchFilter')?.value||'all';
- const rows=all.filter(x=>(f==='all'||x.status===f)&&[x.name,x.mxik,x.uprName,x.effectiveBarcode].some(v=>String(v||'').toLocaleLowerCase().includes(q)));
+ const rows=all.filter(x=>(f==='all'||x.status===f)&&[x.name,x.mxik,x.barcode,x.uprName,x.effectiveBarcode].some(v=>String(v||'').toLocaleLowerCase().includes(q)));
  const pages=Math.max(1,Math.ceil(rows.length/tasnifMatchPageSize));tasnifMatchPage=Math.min(tasnifMatchPage,pages-1);
  const from=tasnifMatchPage*tasnifMatchPageSize,visible=rows.slice(from,from+tasnifMatchPageSize);
  root.innerHTML='<div class="toolbar" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px"><button type="button" class="primary" id="tasnifUprMatch">↻ Avtomatik mosliklarni qayta tekshirish</button><span class="muted">Didox → Soliq MXIK → UPR nomi → SHTRIX KOD bazasi. 80% dan yuqori yagona va xavfsiz moslikda nom hamda shtrix-kod saqlanadi.</span></div>'+
  '<div class="tasnif-stats"><span><b>'+all.length+'</b> jarayonda</span><span><b>'+all.filter(x=>!!x.uprName).length+'</b> UPR taklif bor</span><span><b>'+all.filter(x=>x.status==='manual').length+'</b> tekshirish kerak</span><span><b>'+all.filter(x=>x.status==='missing').length+'</b> mos topilmadi</span></div>'+
- '<div class="ehf-table-wrap" style="border:1px solid #e3eaf4;border-radius:12px;overflow:auto"><table class="ehf-table tasnif-table"><thead><tr><th>№</th><th>Didox mahsulot nomi</th><th style="width:155px;min-width:145px">Moslashtirish</th><th>UPR nomenklaturasi</th><th>Shtrix-kod holati</th><th>Qo‘lda kiritish</th><th style="width:70px">Ko‘rish</th></tr></thead><tbody>'+
- visible.map((x,i)=>'<tr><td>'+(from+i+1)+'</td><td>'+esc(x.name)+'</td><td class="upr-editor-slot" style="width:240px;min-width:210px;vertical-align:middle">'+(x.uprStyleName!==x.name?'<div style="font-size:12px;color:#52657d;margin-bottom:5px">UPR shakli: '+esc(x.uprStyleName)+'</div>':'')+(x.uprName?'<span style="color:#17734c;font-weight:600">✓ Nom mos</span>':'<span style="color:#a66a13;font-weight:600">⚠ Tekshirish</span>')+'</td><td>'+esc(x.uprName||'—')+'</td><td>'+esc(x.effectiveBarcode||'—')+'</td><td><input data-manual-code="'+i+'" placeholder="Shtrix-kod" style="width:145px" inputmode="numeric"> <button type="button" class="secondary" data-manual-save="'+i+'">Saqlash</button></td><td><button class="secondary" style="padding:5px 9px;min-width:38px" title="UPR moslikni ko‘rish va tahlil qilish" aria-label="Moslikni ko‘rish" data-upr-review="'+i+'">👁</button></td></tr>').join('')+
+ '<div class="ehf-table-wrap" style="border:1px solid #e3eaf4;border-radius:12px;overflow:auto"><table class="ehf-table tasnif-table"><thead><tr><th>№</th><th>Didox mahsulot nomi</th><th>Didox asl shtrix-kodi</th><th style="width:155px;min-width:145px">Moslashtirish</th><th>UPR nomenklaturasi</th><th>Shtrix-kod holati</th><th>Qo‘lda kiritish</th><th style="width:70px">Ko‘rish</th></tr></thead><tbody>'+
+ visible.map((x,i)=>'<tr><td>'+(from+i+1)+'</td><td>'+esc(x.name)+'</td><td>'+esc(x.barcode||'—')+( /^\d{1,12}$/.test(String(x.barcode||'').trim())?' <span style="color:#b45309;font-size:11px">13 tadan kam</span>':'')+'</td><td class="upr-editor-slot" style="width:240px;min-width:210px;vertical-align:middle">'+(x.uprStyleName!==x.name?'<div style="font-size:12px;color:#52657d;margin-bottom:5px">UPR shakli: '+esc(x.uprStyleName)+'</div>':'')+(x.uprName?'<span style="color:#17734c;font-weight:600">✓ Nom mos</span>':'<span style="color:#a66a13;font-weight:600">⚠ Tekshirish</span>')+'</td><td>'+esc(x.uprName||'—')+'</td><td>'+esc(x.effectiveBarcode||'—')+'</td><td><input data-manual-code="'+i+'" placeholder="Shtrix-kod" style="width:145px" inputmode="numeric"> <button type="button" class="secondary" data-manual-save="'+i+'">Saqlash</button></td><td><button class="secondary" style="padding:5px 9px;min-width:38px" title="UPR moslikni ko‘rish va tahlil qilish" aria-label="Moslikni ko‘rish" data-upr-review="'+i+'">👁</button></td></tr>').join('')+
  '</tbody></table></div><div class="toolbar"><button class="secondary" id="matchPrev" '+(tasnifMatchPage===0?'disabled':'')+'>← Oldingi</button><b>'+(tasnifMatchPage+1)+' / '+pages+' sahifa</b><button class="secondary" id="matchNext" '+(tasnifMatchPage>=pages-1?'disabled':'')+'>Keyingi →</button></div><div id="tasnifUprReview"></div>';
  root.querySelectorAll('[data-manual-save]').forEach(btn=>btn.onclick=()=>{const i=Number(btn.dataset.manualSave),x=visible[i],input=root.querySelector('[data-manual-code="'+i+'"]'),code=String(input?.value||'').trim();if(!x||!/^\d{8,14}$/.test(code)){alert('Shtrix-kod 8–14 ta raqamdan iborat bo‘lishi kerak.');return}const previous=tasnifMatches[x.key],value={...(typeof previous==='object'&&previous?previous:{}),barcode:code,manual:true};tasnifMatches[x.key]=value;try{localStorage.setItem(tasnifMatchKey,JSON.stringify(tasnifMatches));tasnifMatchDraw()}catch(err){alert('Saqlash xatosi: '+err.message)}});
  root.querySelector('#tasnifUprMatch').onclick=()=>{tasnifMatchDraw();alert('UPR nomi va shtrix-kod mosliklari qayta tekshirildi.');};
