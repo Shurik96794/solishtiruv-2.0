@@ -80,12 +80,12 @@ function didoxBarcodeCatalog(){
 function didoxBarcodeNameIndex(){didoxBarcodeCatalog();return didoxBarcodeCache.byName}
 function didoxLinkedBarcode(l){
  const original=String(l.bar||'').trim();
- if(original)return original;
+ if(tasnifBarcode13(original))return original;
  const name=String(l.nm||'').trim(),mxik=String(l.mxik||'').trim();
- const saved=tasnifMatches[JSON.stringify([name,mxik,''])];
+ const saved=tasnifMatches[JSON.stringify([name,mxik,original])]||tasnifMatches[JSON.stringify([name,mxik,''])];
  const savedCode=typeof saved==='string'?saved:String(saved?.barcode||'').trim();
- if(typeof saved==='object'&&saved?.manual&&savedCode)return savedCode;
- const soliq=[...new Set((tasnifSoliqByMxik.get(tasnifNormCode(mxik))||[]).map(x=>String(x.barcode||'').trim()).filter(Boolean))];
+ if(typeof saved==='object'&&saved?.manual&&tasnifBarcode13(savedCode))return savedCode;
+ const soliq=tasnifSoliqValidCodes(mxik);
  if(soliq.length===1)return soliq[0];
  if(soliq.length>1)return '';
  const catalog=didoxBarcodeCatalog();
@@ -97,14 +97,14 @@ function didoxLinkedBarcode(l){
   if(match?.codes.length===1)return match.codes[0];
  }
  const chosen=typeof saved==='object'&&saved?.uprName?byName.get(tasnifNameKey(saved.uprName)):null;
- if(savedCode&&chosen?.codes.includes(savedCode))return savedCode;
- if(chosen?.codes.length===1)return chosen.codes[0];
+ if(tasnifBarcode13(savedCode)&&chosen?.codes.includes(savedCode))return savedCode;
+ if(chosen?.codes.length===1&&tasnifBarcode13(chosen.codes[0]))return chosen.codes[0];
  const exact=byName.get(tasnifNameKey(name))||byName.get(tasnifNameKey(tasnifUprStyleName(name)));
- if(exact?.codes.length===1)return exact.codes[0];
+ if(exact?.codes.length===1&&tasnifBarcode13(exact.codes[0]))return exact.codes[0];
  const phone=tasnifPhoneCandidate(name,catalog);
- if(phone?.item?.codes.length===1)return phone.item.codes[0];
+ if(phone?.item?.codes.length===1&&tasnifBarcode13(phone.item.codes[0]))return phone.item.codes[0];
  const candidate=tasnifBarcodeNameCandidate(tasnifUprStyleName(name),catalog)||tasnifBarcodeNameCandidate(name,catalog);
- return candidate?.score>=0.8&&candidate?.item?.codes.length===1?candidate.item.codes[0]:'';
+ return candidate?.score>=0.8&&candidate?.item?.codes.length===1&&tasnifBarcode13(candidate.item.codes[0])?candidate.item.codes[0]:'';
 }
 function oneCSyncFromEhf(){
  const source=Array.isArray(ehfDocs)?ehfDocs:[];
@@ -195,7 +195,7 @@ async function tasnifSoliqLoad(){try{const db=await tasnifSoliqDb();let rows;try
 
 let tasnifTab='soliq';
 function tasnifPage(){
- return '<div class="panel tasnif-panel"><div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px"><div><h2 style="margin:0 0 6px">📋 '+(active===7?'TASNIF / Soliq ma’lumotnomasi':'Nomenklatura moslashtirish')+'</h2><p class="muted" style="margin:0">'+(active===7?'MXIK va shtrix-kodlar — Soliq hamda Didox ma’lumotlari alohida saqlanadi.':'Didox mahsulotlarini UPR nomenklaturasi va shtrix-kodlari bilan moslashtirish.')+'</p></div><span style="background:#eef4fc;color:#2c4e75;border-radius:999px;padding:8px 14px;font-size:13px;font-weight:600">'+(active===7?'Ma’lumotnoma':'Moslik nazorati')+'</span></div><div class="toolbar" style="gap:10px;margin-bottom:18px;flex-wrap:wrap"><button type="button" id="tasnifTabSoliq" class="primary">🏛️ Soliq ma’lumotlari</button><button type="button" id="tasnifTabDidox" class="secondary">📄 Didox nomenklaturasi</button><button type="button" id="tasnifTabMatch" class="secondary" style="display:none">🔗 Nomenklatura moslashtirish</button></div><div id="tasnifSoliqPanel"><div class="notice">Bu yerga faqat TASNIF soliq.uz saytidan olingan fayl yuklanadi. Didox, UPR va 1C ma’lumotlari bu bazaga avtomatik qo‘shilmaydi. Rasmiy saytga jonli API ulanishi yo‘q.</div><div class="toolbar"><a class="tasnif-link" href="https://tasnif.soliq.uz/" target="_blank" rel="noopener noreferrer">↗ TASNIF soliq.uz</a><label class="tasnif-link" for="tasnifSoliqFile" style="cursor:pointer">↑ MXIK / SHTRIX Excel yuklash</label><input type="file" id="tasnifSoliqFile" accept=".xlsx,.xls,.csv" style="display:none"><button type="button" class="secondary" id="tasnifSoliqExport">↓ Soliq CSV eksport</button></div><div class="toolbar"><input id="tasnifSoliqSearch" placeholder="Soliq bazasida mahsulot, MXIK yoki shtrix-kod qidirish..." style="flex:1"></div><div id="tasnifSoliqResults"></div></div><div id="tasnifMatchPanel" style="display:none"><div class="notice" style="border-radius:12px;line-height:1.65;padding:15px 18px;margin-bottom:16px">Tartib: 1) Didox shtrix-kodi tekshiriladi; 2) kodi yo‘q mahsulot Soliq MXIK bazasidan qidiriladi; 3) faqat Soliqda ham kod topilmagan mahsulot shu bo‘limga kelib, UPR nomenklatura nomiga moslashtiriladi. MXIK bo‘yicha bir nechta kod topilsa, ular Soliq bosqichida tekshiriladi. Bu oynada avtomatik topilmagan shtrix-kodni qo‘lda kiritish va saqlash mumkin.</div><div class="toolbar" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:16px 0"><input id="tasnifMatchSearch" placeholder="🔎 Didox nomi, MXIK yoki UPR nomi bo‘yicha qidirish..." style="flex:1;min-width:260px;padding:12px"><select id="tasnifMatchFilter"><option value="all">Barcha holatlar</option><option value="matched">Moslangan</option><option value="manual">Tekshirish kerak</option><option value="missing">Shtrix-kodsiz / topilmadi</option></select><button class="secondary" id="tasnifMatchExport">↓ Natija CSV</button></div><div id="tasnifMatchResults"></div></div><div id="tasnifDidoxPanel" style="display:none"><div class="notice">Bu yerga Didoxdagi barcha fakturalar, jumladan imzolanmagan, imzo kutilayotgan va rad etilgan fakturalarning nomenklaturasi ham kiritiladi. Nomenklatura ro‘yxatiga qo‘shish fakturani qabul qilish yoki 1C qoldig‘iga kirim qilish degani emas.</div><div class="toolbar"><input id="tasnifSearch" placeholder="Mahsulot, MXIK yoki shtrix-kod..." style="flex:1;min-width:240px"><select id="tasnifFilter"><option value="all">Barcha mahsulotlar</option><option value="mxik">MXIK bor</option><option value="barcode">Shtrix-kod bor</option><option value="missing">Shtrix-kod yo‘q</option></select><button class="secondary" id="tasnifExport">↓ Didox CSV eksport</button></div><div id="tasnifResults"></div></div></div>';
+ return '<div class="panel tasnif-panel"><div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px"><div><h2 style="margin:0 0 6px">📋 '+(active===7?'TASNIF / Soliq ma’lumotnomasi':'Nomenklatura moslashtirish')+'</h2><p class="muted" style="margin:0">'+(active===7?'MXIK va shtrix-kodlar — Soliq hamda Didox ma’lumotlari alohida saqlanadi.':'Didox mahsulotlarini UPR nomenklaturasi va shtrix-kodlari bilan moslashtirish.')+'</p></div><span style="background:#eef4fc;color:#2c4e75;border-radius:999px;padding:8px 14px;font-size:13px;font-weight:600">'+(active===7?'Ma’lumotnoma':'Moslik nazorati')+'</span></div><div class="toolbar" style="gap:10px;margin-bottom:18px;flex-wrap:wrap"><button type="button" id="tasnifTabSoliq" class="primary">🏛️ Soliq ma’lumotlari</button><button type="button" id="tasnifTabDidox" class="secondary">📄 Didox nomenklaturasi</button><button type="button" id="tasnifTabMatch" class="secondary" style="display:none">🔗 Nomenklatura moslashtirish</button></div><div id="tasnifSoliqPanel"><div class="notice">Bu yerga faqat TASNIF soliq.uz saytidan olingan fayl yuklanadi. Didox, UPR va 1C ma’lumotlari bu bazaga avtomatik qo‘shilmaydi. Rasmiy saytga jonli API ulanishi yo‘q.</div><div class="toolbar"><a class="tasnif-link" href="https://tasnif.soliq.uz/" target="_blank" rel="noopener noreferrer">↗ TASNIF soliq.uz</a><label class="tasnif-link" for="tasnifSoliqFile" style="cursor:pointer">↑ MXIK / SHTRIX Excel yuklash</label><input type="file" id="tasnifSoliqFile" accept=".xlsx,.xls,.csv" style="display:none"><button type="button" class="secondary" id="tasnifSoliqExport">↓ Soliq CSV eksport</button></div><div class="toolbar"><input id="tasnifSoliqSearch" placeholder="Soliq bazasida mahsulot, MXIK yoki shtrix-kod qidirish..." style="flex:1"></div><div id="tasnifSoliqResults"></div></div><div id="tasnifMatchPanel" style="display:none"><div class="notice" style="border-radius:12px;line-height:1.65;padding:15px 18px;margin-bottom:16px">Tartib: 1) Didoxdagi 13 raqamli shtrix-kod saqlanadi, boshqa format alohida tekshiriladi; 2) yaroqli kod bo‘lmasa Soliq MXIK bazasidan qidiriladi; 3) faqat Soliqda ham kod topilmagan mahsulot shu bo‘limga kelib, UPR nomenklatura nomiga moslashtiriladi. MXIK bo‘yicha bir nechta kod topilsa, ular Soliq bosqichida tekshiriladi. Bu oynada avtomatik topilmagan shtrix-kodni qo‘lda kiritish va saqlash mumkin.</div><div class="toolbar" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:16px 0"><input id="tasnifMatchSearch" placeholder="🔎 Didox nomi, MXIK yoki UPR nomi bo‘yicha qidirish..." style="flex:1;min-width:260px;padding:12px"><select id="tasnifMatchFilter"><option value="all">Barcha holatlar</option><option value="matched">Moslangan</option><option value="manual">Tekshirish kerak</option><option value="missing">Shtrix-kodsiz / topilmadi</option></select><button class="secondary" id="tasnifMatchExport">↓ Natija CSV</button></div><div id="tasnifMatchResults"></div></div><div id="tasnifDidoxPanel" style="display:none"><div class="notice">Bu yerga Didoxdagi barcha fakturalar, jumladan imzolanmagan, imzo kutilayotgan va rad etilgan fakturalarning nomenklaturasi ham kiritiladi. Nomenklatura ro‘yxatiga qo‘shish fakturani qabul qilish yoki 1C qoldig‘iga kirim qilish degani emas.</div><div class="toolbar"><input id="tasnifSearch" placeholder="Mahsulot, MXIK yoki shtrix-kod..." style="flex:1;min-width:240px"><select id="tasnifFilter"><option value="all">Barcha mahsulotlar</option><option value="mxik">MXIK bor</option><option value="barcode">Shtrix-kod bor</option><option value="missing">Shtrix-kod yo‘q</option></select><button class="secondary" id="tasnifExport">↓ Didox CSV eksport</button></div><div id="tasnifResults"></div></div></div>';
 }
 let tasnifTabRenderToken=0;
 function tasnifSwitchTab(tab){
@@ -400,11 +400,14 @@ function tasnifAutoUprCandidate(name,catalog){
  return scored.length&&(scored.length===1||scored[0].score>scored[1].score+0.12)?scored[0].item:null;
 }
 let tasnifMatchAutoDirty=false;
+// Format nazorati: asl Didox kodi saqlanadi, faqat 13 raqamli kod avtomatik qabul qilinadi.
+function tasnifBarcode13(value){return /^\d{13}$/.test(String(value??'').trim())}
+function tasnifSoliqValidCodes(mxik){return [...new Set((tasnifSoliqByMxik.get(tasnifNormCode(mxik))||[]).map(y=>String(y.barcode||'').trim()).filter(tasnifBarcode13))]}
 function tasnifMatchRows(){
  const catalog=tasnifUprCatalog().filter(x=>!tasnifIsKPrefixProduct(x.name)),byName=new Map(catalog.map(x=>[x.key,x])),cache=new Map();
  const output=tasnifRows().filter(x=>{
-  if(String(x.barcode||'').trim())return false;
-  const codes=[...new Set((tasnifSoliqByMxik.get(tasnifNormCode(x.mxik))||[]).map(y=>String(y.barcode||'').trim()).filter(Boolean))];
+  if(tasnifBarcode13(x.barcode))return false;
+  const codes=tasnifSoliqValidCodes(x.mxik);
   return codes.length===0;
  }).map(x=>{
   const key=JSON.stringify([x.name,x.mxik,x.barcode]),nameKey=tasnifNameKey(x.name);
@@ -416,10 +419,10 @@ function tasnifMatchRows(){
   const chosen=savedUpr||exact||found.barcode?.item||found.name;
   // UPR nomi tasdiqlangan yoki aynan mos bo‘lsa, uning yagona haqiqiy kodi olinadi.
   // Taxminiy nom mosligida esa faqat 80%+ tekshiruvdan o‘tgan kod qo‘llanadi.
-  const uniqueCode=chosen?.codes?.length===1?String(chosen.codes[0]||'').trim():'';
+  const uniqueCode=chosen?.codes?.length===1&&tasnifBarcode13(chosen.codes[0])?String(chosen.codes[0]||'').trim():'';
   const verifiedCandidate=!!(found.barcode&&found.barcode.item?.key===chosen?.key&&found.barcode.score>=0.8);
   const savedCode=typeof saved==='object'?String(saved?.barcode||'').trim():'';
-  const safeBarcode=saved?.manual&&savedCode?savedCode:(uniqueCode&&(savedUpr||exact||verifiedCandidate)?uniqueCode:(savedCode&&chosen?.codes?.includes(savedCode)?savedCode:''));
+  const safeBarcode=saved?.manual&&tasnifBarcode13(savedCode)?savedCode:(uniqueCode&&(savedUpr||exact||verifiedCandidate)?uniqueCode:(savedCode&&chosen?.codes?.includes(savedCode)?savedCode:''));
   if(!saved?.manual&&chosen&&(!savedUpr||safeBarcode&&saved?.barcode!==safeBarcode)){
    tasnifMatches[key]={...(typeof saved==='object'&&saved?saved:{}),uprName:chosen.name,...(safeBarcode?{barcode:safeBarcode}:{})};
    tasnifMatchAutoDirty=true;
@@ -525,7 +528,7 @@ function tasnifUprIndex(){const byName=new Map(),byPc=new Map();for(const x of b
 function tasnifUprCodes(name,index){return [...(index.get(tasnifNameKey(name))||[])]}
 function tasnifResolved(x,uprIndex,context){
  const key=JSON.stringify([x.name,x.mxik,x.barcode]);
- const soliqCodes=[...new Set((tasnifSoliqByMxik.get(tasnifNormCode(x.mxik))||[]).map(y=>String(y.barcode||'').trim()).filter(Boolean))];
+ const soliqCodes=tasnifSoliqValidCodes(x.mxik);
  const catalog=context?.catalog||tasnifUprCatalog(),byName=context?.byName||new Map(catalog.map(item=>[item.key,item]));
  const saved=tasnifMatches[key],savedCode=typeof saved==='string'?saved:saved?.barcode;
  const savedName=typeof saved==='object'?saved?.uprName:'';
@@ -534,9 +537,9 @@ function tasnifResolved(x,uprIndex,context){
  const codes=chosen?.codes||[];
  const validSaved=!!savedCode&&(saved?.manual||soliqCodes.includes(savedCode)||codes.includes(savedCode));
  const verified=tasnifPhoneCandidate(x.name,catalog);const exactNormalized=chosen?.key===tasnifNameKey(tasnifUprStyleName(x.name));const verifiedBarcode=codes.length===1&&(exactNormalized||verified?.item?.key===chosen?.key&&verified?.score>=0.8)?codes[0]:'';
- const code=x.barcode||(saved?.manual&&savedCode?savedCode:soliqCodes.length===1?soliqCodes[0]:soliqCodes.length>1?'':validSaved?savedCode:verifiedBarcode||'');
- const source=x.barcode?'Didox':saved?.manual&&savedCode?'Qo‘lda kiritilgan':soliqCodes.length===1?'Soliq MXIK':code?'UPR nomi → Shtrix-kod':chosen?'UPR nomi bog‘landi, kod yo‘q':'Topilmadi';
- if(!saved?.manual&&!x.barcode&&soliqCodes.length===0&&chosen&&(!savedName||verifiedBarcode&&!validSaved)){
+ const code=tasnifBarcode13(x.barcode)?x.barcode:(saved?.manual&&tasnifBarcode13(savedCode)?savedCode:soliqCodes.length===1?soliqCodes[0]:soliqCodes.length>1?'':validSaved&&tasnifBarcode13(savedCode)?savedCode:tasnifBarcode13(verifiedBarcode)?verifiedBarcode:'');
+ const source=tasnifBarcode13(x.barcode)?'Didox':saved?.manual&&savedCode?'Qo‘lda kiritilgan':soliqCodes.length===1?'Soliq MXIK':code?'UPR nomi → Shtrix-kod':chosen?'UPR nomi bog‘landi, kod yo‘q':'Topilmadi';
+ if(!saved?.manual&&!tasnifBarcode13(x.barcode)&&soliqCodes.length===0&&chosen&&(!savedName||verifiedBarcode&&!validSaved)){
   tasnifMatches[key]={barcode:verifiedBarcode||'',uprName:chosen.name};
   try{localStorage.setItem(tasnifMatchKey,JSON.stringify(tasnifMatches))}catch(e){console.warn('Moslik saqlanmadi',e)}
  }
@@ -545,9 +548,9 @@ function tasnifResolved(x,uprIndex,context){
 function tasnifAutoBind(){
  const rows=tasnifRows();let added=0,existing=0,ambiguous=0,missing=0;
  for(const x of rows){
-  if(x.barcode){existing++;continue}
+  if(tasnifBarcode13(x.barcode)){existing++;continue}
   const key=JSON.stringify([x.name,x.mxik,x.barcode]);
-  const codes=[...new Set((tasnifSoliqByMxik.get(tasnifNormCode(x.mxik))||[]).map(y=>String(y.barcode||'').trim()).filter(Boolean))];
+  const codes=tasnifSoliqValidCodes(x.mxik);
   if(codes.length===1){if(tasnifMatches[key]!==codes[0]){tasnifMatches[key]=codes[0];added++}}
   else if(codes.length>1)ambiguous++;else missing++;
  }
