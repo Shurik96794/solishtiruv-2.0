@@ -790,23 +790,50 @@ function ehfUprCompare(d){
  const exact=related.filter(x=>invoice&&uprInvoiceNorm(uprInvoiceNumber(x))===invoice);
  let candidates=exact,method=exact.length?'Faktura raqami':'',ambiguous=false;
  if(!candidates.length&&linked.length){
-  // Faktura raqami bo‘lmasa, bir ta’minotchining bir kundagi barcha do‘kon kirimlari birgalikda tekshiriladi.
-  // Bu bitta Didox fakturasi UPRda bir nechta do‘konga bo‘lib kirim qilingan holatni qoplaydi.
+  // Faktura raqami bo‘lmasa, STIRga bog‘langan BARCHA MAIN ta’minotchilarining
+  // bir kundagi kirimlari birga olinadi. Do‘kon va MAIN ta’minotchi bo‘yicha bo‘lib yuborilmaydi.
   const byDate=new Map();
   for(const x of related){
    if(uprInvoiceNumber(x))continue;
    const date=uprDateISO(x.date);if(!date)continue;
-   const key=[uprSupplierNorm(x.supplier),String(x.supplierId||''),date].join('|');
-   if(!byDate.has(key))byDate.set(key,[]);
-   byDate.get(key).push(x);
+   if(!byDate.has(date))byDate.set(date,[]);
+   byDate.get(date).push(x);
   }
-  let plausible=[...byDate.values()].filter(group=>groupMatches(group));
-  if(plausible.length>1&&targetDate){
-   const sameDate=plausible.filter(group=>group.some(x=>uprDateISO(x.date)===targetDate));
-   if(sameDate.length===1)plausible=sameDate;
+
+  const expectedCodes=new Set(expected.filter(x=>x.code).map(x=>x.code));
+  const scored=[...byDate.entries()].map(([date,group])=>{
+   const actual=aggregate(group,'upr');
+   let barcodeHits=0,qtyPenalty=0,amountPenalty=0;
+   for(const e of expected){
+    if(!e.code)continue;
+    const a=actual.find(x=>x.code===e.code);
+    if(a){
+     barcodeHits++;
+     qtyPenalty+=Math.abs(a.qty-e.qty);
+     amountPenalty+=Math.abs(a.total-e.total);
+    }
+   }
+   const extraMatched=actual.filter(x=>x.code&&expectedCodes.has(x.code)).length;
+   return {date,group,barcodeHits,extraMatched,qtyPenalty,amountPenalty,totalPenalty:Math.abs(actual.reduce((n,x)=>n+x.total,0)-targetTotal)};
+  }).filter(x=>x.barcodeHits>0);
+
+  scored.sort((a,b)=>{
+   if(targetDate){
+    const ad=a.date===targetDate?1:0,bd=b.date===targetDate?1:0;
+    if(ad!==bd)return bd-ad;
+   }
+   return b.barcodeHits-a.barcodeHits || a.qtyPenalty-b.qtyPenalty || a.amountPenalty-b.amountPenalty || a.totalPenalty-b.totalPenalty;
+  });
+
+  if(scored.length){
+   const best=scored[0],second=scored[1];
+   const sameStrength=second&&best.date!==targetDate&&second.date!==targetDate&&
+    second.barcodeHits===best.barcodeHits&&Math.abs(second.qtyPenalty-best.qtyPenalty)<0.000001&&Math.abs(second.amountPenalty-best.amountPenalty)<0.01;
+   if(!sameStrength){
+    candidates=best.group;
+    method='STIR → barcha bog‘langan MAIN ta’minotchilar → UPR sana → barcha do‘konlar → shtrix-kod';
+   }else ambiguous=true;
   }
-  if(plausible.length===1){candidates=plausible[0];method='STIR → MAIN ta’minotchi → UPR sana → barcha do‘konlar → shtrix-kod/miqdor/summa'}
-  else if(plausible.length>1)ambiguous=true;
  }
  const actual=aggregate(candidates,'upr');
  const rows=[];
@@ -845,7 +872,7 @@ function ehfUprCompare(d){
  const reason=dxStatus(d).type==='rejected'?'Didox fakturasi rad etilgan — qabul qilish mumkin emas':
   ambiguous?'Bir nechta UPR kirim to‘plami bir xil shartlarga mos — qo‘lda tekshirish kerak':
   !linked.length?'Ta’minotchi STIR orqali MAIN ta’minotchiga bog‘lanmagan':
-  !candidates.length?'UPRda shtrix-kod, miqdor va summa bo‘yicha mos kirim topilmadi':
+  !candidates.length?'Bog‘langan MAIN ta’minotchilar UPR kirimlarida fakturadagi shtrix-kod topilmadi':
   complete?'To‘liq mos':'Shtrix-kod, miqdor, narx yoki summada farq bor';
  return {linked:linked.length>0,linkedNames:linked.map(x=>x.name),uprCount:candidates.length,rows,matched,complete,reason,method,stores,dates,targetDate};
 }
