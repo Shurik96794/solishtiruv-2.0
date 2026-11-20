@@ -800,6 +800,8 @@ function ehfUprCompare(d){
   }
   return Math.abs(actual.reduce((n,x)=>n+x.total,0)-targetTotal)<=0.01;
  };
+ // Raqam bilan bog‘langan kirimlar ustuvor; boshqa fakturaga tegishli kirimlar
+ // sana/shtrix-kod orqali tasodifan qo‘shilmasligi kerak.
  const exact=related.filter(x=>invoice&&uprInvoiceNorm(uprInvoiceNumber(x))===invoice);
  let candidates=exact,method=exact.length?'Faktura raqami':'',ambiguous=false;
  if(!candidates.length&&linked.length){
@@ -830,21 +832,34 @@ function ehfUprCompare(d){
    return {date,group,barcodeHits,extraMatched,qtyPenalty,amountPenalty,totalPenalty:Math.abs(actual.reduce((n,x)=>n+x.total,0)-targetTotal)};
   }).filter(x=>x.barcodeHits>0);
 
-  scored.sort((a,b)=>{
-   if(targetDate){
-    const ad=a.date===targetDate?1:0,bd=b.date===targetDate?1:0;
-    if(ad!==bd)return bd-ad;
-   }
-   return b.barcodeHits-a.barcodeHits || a.qtyPenalty-b.qtyPenalty || a.amountPenalty-b.amountPenalty || a.totalPenalty-b.totalPenalty;
-  });
-
+  // Shtrix-kod qamrovi, miqdor va summa birinchi o‘rinda.
+  // Sana yaqinligi faqat teng kuchdagi nomzodlarni ajratadi.
+  const dayDistance=date=>{
+   if(!targetDate||!/^\\d{4}-\\d{2}-\\d{2}$/.test(date)||!/^\\d{4}-\\d{2}-\\d{2}$/.test(targetDate))return 999999;
+   return Math.abs(Date.parse(date+'T00:00:00Z')-Date.parse(targetDate+'T00:00:00Z'))/86400000;
+  };
+  scored.forEach(x=>{x.dayGap=dayDistance(x.date);x.fullBarcodeCoverage=x.barcodeHits===expectedCodes.size&&expectedCodes.size>0});
+  scored.sort((a,b)=>
+   Number(b.fullBarcodeCoverage)-Number(a.fullBarcodeCoverage)||
+   b.barcodeHits-a.barcodeHits||
+   a.qtyPenalty-b.qtyPenalty||
+   a.amountPenalty-b.amountPenalty||
+   a.totalPenalty-b.totalPenalty||
+   a.dayGap-b.dayGap
+  );
   if(scored.length){
    const best=scored[0],second=scored[1];
-   const sameStrength=second&&best.date!==targetDate&&second.date!==targetDate&&
-    second.barcodeHits===best.barcodeHits&&Math.abs(second.qtyPenalty-best.qtyPenalty)<0.000001&&Math.abs(second.amountPenalty-best.amountPenalty)<0.01;
-   if(!sameStrength){
+   const sameStrength=second&&
+    second.fullBarcodeCoverage===best.fullBarcodeCoverage&&
+    second.barcodeHits===best.barcodeHits&&
+    Math.abs(second.qtyPenalty-best.qtyPenalty)<0.000001&&
+    Math.abs(second.amountPenalty-best.amountPenalty)<0.01&&
+    Math.abs(second.totalPenalty-best.totalPenalty)<0.01&&
+    second.dayGap===best.dayGap;
+   // Sana farqi 7 kundan katta bo‘lsa, boshqa kirimni noto‘g‘ri biriktirmaymiz.
+   if(!sameStrength&&best.dayGap<=7){
     candidates=best.group;
-    method='STIR → barcha bog‘langan MAIN ta’minotchilar → UPR sana → barcha do‘konlar → shtrix-kod';
+    method='STIR → MAIN ta’minotchilar → 7 kunlik UPR kirimlari → shtrix-kod / miqdor / summa';
    }else ambiguous=true;
   }
  }
@@ -881,7 +896,7 @@ function ehfUprCompare(d){
  const stores=[...new Set(candidates.map(x=>String(x.store||'').trim()).filter(Boolean))];
  const dates=[...new Set(candidates.map(x=>uprDateISO(x.date)).filter(Boolean))];
  const reason=dxStatus(d).type==='rejected'?'Didox fakturasi rad etilgan — qabul qilish mumkin emas':
-  ambiguous?'Bir nechta UPR kirim to‘plami bir xil shartlarga mos — qo‘lda tekshirish kerak':
+  ambiguous?'UPR kirimlari bir xil darajada mos yoki faktura sanasidan 7 kundan uzoq — qo‘lda tekshirish kerak':
   !linked.length?'Ta’minotchi STIR orqali MAIN ta’minotchiga bog‘lanmagan':
   !candidates.length?'Bog‘langan MAIN ta’minotchilar UPR kirimlarida fakturadagi shtrix-kod topilmadi':
   complete?'To‘liq mos':'Shtrix-kod topilgan, lekin miqdor, narx yoki summada farq bor';
