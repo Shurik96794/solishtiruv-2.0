@@ -825,45 +825,38 @@ function ehfUprCompare(d){
  const exact=related.filter(x=>invoice&&uprInvoiceNorm(uprInvoiceNumber(x))===invoice);
  let candidates=exact,method=exact.length?'Faktura raqami':'',ambiguous=false;
  if(!candidates.length&&linked.length){
-  // Faktura raqami UPRda ko‘rsatilmagan bo‘lsa, barcha tegishli sanalardagi
-  // shtrix-kodli kirimlarni tekshiramiz. Bir xil tovarning turli kirimlarini
-  // bitta faktura miqdorigacha yig‘ish mumkin.
+  // Avvalgi prinsip: bitta sanadagi UPR kirimlari alohida tekshiriladi.
+  // Shtrix-kod asosiy kalit, nom bo‘yicha avtomatik moslik yo‘q.
   const expectedCodes=new Set(expected.map(x=>x.code).filter(Boolean));
-  const matching=related.filter(x=>expectedCodes.has(uprCode(x)));
-  const dateGap=x=>{
+  const byDate=new Map();
+  for(const x of related){
+   if(uprInvoiceNumber(x))continue;
    const date=uprDateISO(x.date);
-   if(!targetDate||!date)return 999999;
+   if(!date||!expectedCodes.has(uprCode(x)))continue;
+   if(!byDate.has(date))byDate.set(date,[]);
+   byDate.get(date).push(x);
+  }
+  const dateGap=date=>{
+   if(!targetDate)return 999999;
    const a=Date.parse(date+'T00:00:00Z'),b=Date.parse(targetDate+'T00:00:00Z');
    return Number.isFinite(a)&&Number.isFinite(b)?Math.abs(a-b)/86400000:999999;
   };
-  // 30 kunlik oynadan tashqaridagi kirimlarni ham aniqlash uchun ko‘ramiz,
-  // lekin avtomatik to‘liq moslik faqat ishonchli sana doirasida bo‘ladi.
-  const near=matching.filter(x=>dateGap(x)<=30);
-  const pool=near.length?near:matching;
-  const chosen=[],unresolved=[];
-  for(const e of expected){
-   if(!e.code)continue;
-   const options=pool.filter(x=>uprCode(x)===e.code);
-   options.sort((a,b)=>dateGap(a)-dateGap(b));
-   const selected=[];let sum=0;
-   // Bitta qatordagi miqdor yetarli bo‘lsa, uni afzal ko‘ramiz.
-   const exactOne=options.find(x=>Math.abs((Number(x.qty)||0)-e.qty)<0.000001);
-   if(exactOne){selected.push(exactOne);sum=Number(exactOne.qty)||0}
-   else{
-    for(const x of options){
-     const q=Number(x.qty)||0;
-     if(q>0&&sum+q<=e.qty+0.000001){selected.push(x);sum+=q}
-     if(Math.abs(sum-e.qty)<0.000001)break;
-    }
+  const scored=[...byDate.entries()].map(([date,group])=>{
+   const actual=aggregate(group,'upr');
+   let hits=0,qtyDiff=0,totalDiff=0;
+   for(const e of expected){
+    const found=actual.find(x=>x.code&&x.code===e.code);
+    if(found){hits++;qtyDiff+=Math.abs(found.qty-e.qty);totalDiff+=Math.abs(found.total-e.total)}
    }
-   if(Math.abs(sum-e.qty)>0.000001)unresolved.push(e.code);
-   chosen.push(...selected);
+   return {date,group,hits,qtyDiff,totalDiff,gap:dateGap(date)};
+  }).sort((x,y)=>y.hits-x.hits||x.qtyDiff-y.qtyDiff||x.totalDiff-y.totalDiff||x.gap-y.gap);
+  if(scored.length){
+   const best=scored[0],second=scored[1];
+   const tied=second&&best.hits===second.hits&&Math.abs(best.qtyDiff-second.qtyDiff)<0.000001&&Math.abs(best.totalDiff-second.totalDiff)<0.01&&best.gap===second.gap;
+   candidates=best.group;
+   method='STIR → UPR ta’minotchi → sana guruhi → shtrix-kod';
+   if(tied||best.gap>7)ambiguous=true;
   }
-  candidates=[...new Set(chosen)];
-  if(candidates.length){
-   method='STIR → UPR ta’minotchi → shtrix-kod → miqdor (turli sanalar)';
-   if(candidates.some(x=>dateGap(x)>30))ambiguous=true;
-  }else if(matching.length)ambiguous=true;
  }
  // Bir xil sotuvchi, xaridor va raqamli fakturalar takror hisoblanishidan himoya.
  const duplicateClaim=!!invoice&&candidates.length>0&&(Array.isArray(dxDocs)?dxDocs:[]).some(other=>other!==d&&uprInvoiceNorm(other.f_no)===invoice&&
@@ -903,7 +896,7 @@ function ehfUprCompare(d){
  const dates=[...new Set(candidates.map(x=>uprDateISO(x.date)).filter(Boolean))];
  const reason=dxStatus(d).type==='rejected'?'Didox fakturasi rad etilgan — qabul qilish mumkin emas':
   duplicateClaim?'Bir xil raqam, sotuvchi va xaridorga tegishli boshqa Didox fakturasi mavjud — takroriy kirim xavfi':
-  ambiguous?'Shtrix-kodli kirim topildi, lekin sana yoki miqdor bo‘yicha qo‘lda tekshirish kerak':
+  ambiguous?'Shtrix-kod topildi, lekin sana bo‘yicha tasdiqlash uchun qo‘lda tekshirish kerak':
   !linked.length?'Ta’minotchi STIR orqali MAIN ta’minotchiga bog‘lanmagan':
   hasStoreMap&&!buyerStores.size?'Xaridor MCHJ STIRiga do‘kon biriktirilmagan — avtomatik tasdiqlash mumkin emas':
   expected.some(x=>!x.code)?'Didox nomenklaturasida tasdiqlangan shtrix-kod mosligi yo‘q — nomenklaturani bog‘lang':
