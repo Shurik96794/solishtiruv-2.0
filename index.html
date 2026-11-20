@@ -825,63 +825,45 @@ function ehfUprCompare(d){
  const exact=related.filter(x=>invoice&&uprInvoiceNorm(uprInvoiceNumber(x))===invoice);
  let candidates=exact,method=exact.length?'Faktura raqami':'',ambiguous=false;
  if(!candidates.length&&linked.length){
-  // Faktura raqami bo‘lmasa, STIRga bog‘langan BARCHA MAIN ta’minotchilarining
-  // bir kundagi kirimlari birga olinadi. Do‘kon va MAIN ta’minotchi bo‘yicha bo‘lib yuborilmaydi.
-  const byDate=new Map();
-  for(const x of related){
-   if(uprInvoiceNumber(x))continue;
-   const date=uprDateISO(x.date);if(!date)continue;
-   if(!byDate.has(date))byDate.set(date,[]);
-   byDate.get(date).push(x);
-  }
-
-  const expectedCodes=new Set(expected.filter(x=>x.code).map(x=>x.code));
-  const scored=[...byDate.entries()].map(([date,group])=>{
-   const actual=aggregate(group,'upr');
-   let barcodeHits=0,qtyPenalty=0,amountPenalty=0;
-   for(const e of expected){
-    if(!e.code)continue;
-    const a=actual.find(x=>x.code===e.code);
-    if(a){
-     barcodeHits++;
-     qtyPenalty+=Math.abs(a.qty-e.qty);
-     amountPenalty+=Math.abs(a.total-e.total);
+  // Faktura raqami UPRda ko‘rsatilmagan bo‘lsa, barcha tegishli sanalardagi
+  // shtrix-kodli kirimlarni tekshiramiz. Bir xil tovarning turli kirimlarini
+  // bitta faktura miqdorigacha yig‘ish mumkin.
+  const expectedCodes=new Set(expected.map(x=>x.code).filter(Boolean));
+  const matching=related.filter(x=>expectedCodes.has(uprCode(x)));
+  const dateGap=x=>{
+   const date=uprDateISO(x.date);
+   if(!targetDate||!date)return 999999;
+   const a=Date.parse(date+'T00:00:00Z'),b=Date.parse(targetDate+'T00:00:00Z');
+   return Number.isFinite(a)&&Number.isFinite(b)?Math.abs(a-b)/86400000:999999;
+  };
+  // 30 kunlik oynadan tashqaridagi kirimlarni ham aniqlash uchun ko‘ramiz,
+  // lekin avtomatik to‘liq moslik faqat ishonchli sana doirasida bo‘ladi.
+  const near=matching.filter(x=>dateGap(x)<=30);
+  const pool=near.length?near:matching;
+  const chosen=[],unresolved=[];
+  for(const e of expected){
+   if(!e.code)continue;
+   const options=pool.filter(x=>uprCode(x)===e.code);
+   options.sort((a,b)=>dateGap(a)-dateGap(b));
+   const selected=[];let sum=0;
+   // Bitta qatordagi miqdor yetarli bo‘lsa, uni afzal ko‘ramiz.
+   const exactOne=options.find(x=>Math.abs((Number(x.qty)||0)-e.qty)<0.000001);
+   if(exactOne){selected.push(exactOne);sum=Number(exactOne.qty)||0}
+   else{
+    for(const x of options){
+     const q=Number(x.qty)||0;
+     if(q>0&&sum+q<=e.qty+0.000001){selected.push(x);sum+=q}
+     if(Math.abs(sum-e.qty)<0.000001)break;
     }
    }
-   const extraMatched=actual.filter(x=>x.code&&expectedCodes.has(x.code)).length;
-   return {date,group,barcodeHits,extraMatched,qtyPenalty,amountPenalty,totalPenalty:Math.abs(actual.reduce((n,x)=>n+x.total,0)-targetTotal)};
-  }).filter(x=>x.barcodeHits>0);
-
-  // Shtrix-kod qamrovi, miqdor va summa birinchi o‘rinda.
-  // Sana yaqinligi faqat teng kuchdagi nomzodlarni ajratadi.
-  const dayDistance=date=>{
-   if(!targetDate||!/^\\d{4}-\\d{2}-\\d{2}$/.test(date)||!/^\\d{4}-\\d{2}-\\d{2}$/.test(targetDate))return 999999;
-   return Math.abs(Date.parse(date+'T00:00:00Z')-Date.parse(targetDate+'T00:00:00Z'))/86400000;
-  };
-  scored.forEach(x=>{x.dayGap=dayDistance(x.date);x.fullBarcodeCoverage=x.barcodeHits===expectedCodes.size&&expectedCodes.size>0});
-  scored.sort((a,b)=>
-   Number(b.fullBarcodeCoverage)-Number(a.fullBarcodeCoverage)||
-   b.barcodeHits-a.barcodeHits||
-   a.qtyPenalty-b.qtyPenalty||
-   a.amountPenalty-b.amountPenalty||
-   a.totalPenalty-b.totalPenalty||
-   a.dayGap-b.dayGap
-  );
-  if(scored.length){
-   const best=scored[0],second=scored[1];
-   const sameStrength=second&&
-    second.fullBarcodeCoverage===best.fullBarcodeCoverage&&
-    second.barcodeHits===best.barcodeHits&&
-    Math.abs(second.qtyPenalty-best.qtyPenalty)<0.000001&&
-    Math.abs(second.amountPenalty-best.amountPenalty)<0.01&&
-    Math.abs(second.totalPenalty-best.totalPenalty)<0.01&&
-    second.dayGap===best.dayGap;
-   // Sana farqi 7 kundan katta bo‘lsa, boshqa kirimni noto‘g‘ri biriktirmaymiz.
-   if(!sameStrength&&best.dayGap<=7){
-    candidates=best.group;
-    method='STIR → MAIN ta’minotchilar → 7 kunlik UPR kirimlari → shtrix-kod / miqdor / summa';
-   }else ambiguous=true;
+   if(Math.abs(sum-e.qty)>0.000001)unresolved.push(e.code);
+   chosen.push(...selected);
   }
+  candidates=[...new Set(chosen)];
+  if(candidates.length){
+   method='STIR → UPR ta’minotchi → shtrix-kod → miqdor (turli sanalar)';
+   if(candidates.some(x=>dateGap(x)>30))ambiguous=true;
+  }else if(matching.length)ambiguous=true;
  }
  // Bir xil sotuvchi, xaridor va raqamli fakturalar takror hisoblanishidan himoya.
  const duplicateClaim=!!invoice&&candidates.length>0&&(Array.isArray(dxDocs)?dxDocs:[]).some(other=>other!==d&&uprInvoiceNorm(other.f_no)===invoice&&
@@ -921,7 +903,7 @@ function ehfUprCompare(d){
  const dates=[...new Set(candidates.map(x=>uprDateISO(x.date)).filter(Boolean))];
  const reason=dxStatus(d).type==='rejected'?'Didox fakturasi rad etilgan — qabul qilish mumkin emas':
   duplicateClaim?'Bir xil raqam, sotuvchi va xaridorga tegishli boshqa Didox fakturasi mavjud — takroriy kirim xavfi':
-  ambiguous?'UPR kirimlari bir xil darajada mos yoki faktura sanasidan 7 kundan uzoq — qo‘lda tekshirish kerak':
+  ambiguous?'Shtrix-kodli kirim topildi, lekin sana yoki miqdor bo‘yicha qo‘lda tekshirish kerak':
   !linked.length?'Ta’minotchi STIR orqali MAIN ta’minotchiga bog‘lanmagan':
   hasStoreMap&&!buyerStores.size?'Xaridor MCHJ STIRiga do‘kon biriktirilmagan — avtomatik tasdiqlash mumkin emas':
   expected.some(x=>!x.code)?'Didox nomenklaturasida tasdiqlangan shtrix-kod mosligi yo‘q — nomenklaturani bog‘lang':
