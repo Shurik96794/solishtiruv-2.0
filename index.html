@@ -433,7 +433,7 @@ function tasnifMatchRows(){
  });
  if(tasnifMatchAutoDirty){try{localStorage.setItem(tasnifMatchKey,JSON.stringify(tasnifMatches));tasnifMatchAutoDirty=false}catch(e){console.warn('Matching saqlash xatosi',e)}}
  // Shtrix-kodi ishonchli biriktirilgan mahsulot ishchi ro‘yxatda qolmasin.
- return output.filter(x=>/^\d{1,12}$/.test(String(x.barcode||'').trim())||!x.effectiveBarcode);
+ return output.filter(x=>!tasnifBarcode13(x.effectiveBarcode)&&!tasnifBarcode13(tasnifSoliqValidCodes(x.mxik).length===1?tasnifSoliqValidCodes(x.mxik)[0]:''));
 }
 let tasnifMatchPage=0;const tasnifMatchPageSize=50;
 function tasnifMatchSave(row,barcode,uprName){
