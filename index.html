@@ -758,6 +758,20 @@ function uprResolvedBarcode(x){
  }
  return '';
 }
+function invoiceVerifiedBarcode(l,inn){
+ const raw=String(l.bar||l.barcode||'').trim();
+ if(/^\\d{13}$/.test(raw))return raw;
+ const name=String(l.nm||'').trim(),mxik=String(l.mxik||'').trim();
+ const saved=tasnifMatches[JSON.stringify([name,mxik,raw])]||tasnifMatches[JSON.stringify([name,mxik,''])];
+ const code=typeof saved==='string'?saved:String(saved?.barcode||'').trim();
+ if((typeof saved==='string'||saved?.manual)&&/^\\d{13}$/.test(code))return code;
+ const mapped=ehfMappings[[String(inn||''),mxik,ehfNormalize(name)].join('|')];
+ if(mapped){
+  const hits=new Set((records[3]||[]).filter(x=>String(x.tovarId||'')===String(mapped.id||'')&&String(x.variantCode||'')===String(mapped.pc||'')).map(uprResolvedBarcode).filter(x=>/^\\d{13}$/.test(x)));
+  if(hits.size===1)return [...hits][0];
+ }
+ return '';
+}
 function ehfUprCompare(d){
  const invoice=uprInvoiceNorm(d.f_no),inn=String(d.s_inn||'').replace(/\D/g,'');
  const linkedIds=new Set(supplierEntities().filter(x=>String(x.inn||'').replace(/\D/g,'')===inn).map(x=>String(x.supplierId)));
@@ -765,10 +779,16 @@ function ehfUprCompare(d){
  const supplierNames=new Set(linked.map(x=>uprSupplierNorm(x.name)));
  const supplierMainIds=new Set(linked.map(x=>String(x.mainId||'')).filter(Boolean));
  const all=records[3]||[];
- const related=all.filter(x=>supplierNames.has(uprSupplierNorm(x.supplier))||supplierMainIds.has(String(x.supplierId||'')));
+ const buyerInn=String(d.b_inn||'').replace(/\\D/g,'');
+ const storeLinks=storeCompanyRows().filter(x=>String(x.inn||'').replace(/\\D/g,'')===buyerInn);
+ const allStoreLinks=storeCompanyRows();
+ const buyerStores=new Set(storeLinks.flatMap(x=>[String(x.storeName||'').trim().toLocaleLowerCase(),String(x.storeId||'').trim().toLocaleLowerCase()]).filter(Boolean));
+ const hasStoreMap=allStoreLinks.length>0;
+ const related=all.filter(x=>(supplierNames.has(uprSupplierNorm(x.supplier))||supplierMainIds.has(String(x.supplierId||'')))&&
+  (!hasStoreMap||(buyerStores.has(String(x.store||'').trim().toLocaleLowerCase())||buyerStores.has(String(x.storeId||'').trim().toLocaleLowerCase()))));
  const expectedRaw=(d.lines||[]).map(l=>({
   name:String(l.nm||'').trim(),
-  code:String(didoxLinkedBarcode({...l,_supplierInn:d.s_inn})||'').trim(),
+  code:invoiceVerifiedBarcode(l,d.s_inn),
   qty:Number(l.q)||0,
   total:Number(l.sum_q)||0
  }));
@@ -896,13 +916,15 @@ function ehfUprCompare(d){
   matchBy:'UPRda ortiqcha',barcodeConflict:false,matched:false
  })});
  const matched=rows.filter(x=>x.matched).length;
- const complete=!!candidates.length&&!ambiguous&&!duplicateClaim&&rows.length>0&&matched===rows.length&&dxStatus(d).type!=='rejected';
+ const complete=(!hasStoreMap||buyerStores.size>0)&&!!candidates.length&&!ambiguous&&!duplicateClaim&&rows.length>0&&matched===rows.length&&dxStatus(d).type!=='rejected';
  const stores=[...new Set(candidates.map(x=>String(x.store||'').trim()).filter(Boolean))];
  const dates=[...new Set(candidates.map(x=>uprDateISO(x.date)).filter(Boolean))];
  const reason=dxStatus(d).type==='rejected'?'Didox fakturasi rad etilgan — qabul qilish mumkin emas':
   duplicateClaim?'Bir xil raqam, sotuvchi va xaridorga tegishli boshqa Didox fakturasi mavjud — takroriy kirim xavfi':
   ambiguous?'UPR kirimlari bir xil darajada mos yoki faktura sanasidan 7 kundan uzoq — qo‘lda tekshirish kerak':
   !linked.length?'Ta’minotchi STIR orqali MAIN ta’minotchiga bog‘lanmagan':
+  hasStoreMap&&!buyerStores.size?'Xaridor MCHJ STIRiga do‘kon biriktirilmagan — avtomatik tasdiqlash mumkin emas':
+  expected.some(x=>!x.code)?'Didox nomenklaturasida tasdiqlangan shtrix-kod mosligi yo‘q — nomenklaturani bog‘lang':
   !candidates.length?'Bog‘langan MAIN ta’minotchilar UPR kirimlarida fakturadagi shtrix-kod topilmadi':
   complete?'To‘liq mos':'Shtrix-kod topilgan, lekin miqdor, narx yoki summada farq bor';
  return {linked:linked.length>0,linkedNames:linked.map(x=>x.name),uprCount:candidates.length,rows,matched,complete,reason,method,stores,dates,targetDate};
