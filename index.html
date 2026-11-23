@@ -809,6 +809,19 @@ function tasnifExport(){
 }
 function uprInvoiceNumber(x){return String(x.invoiceNo||x.docNo||x.documentNumber||x.f_no||'').trim()}
 function uprInvoiceNorm(x){return String(x||'').normalize('NFKC').trim().toLocaleUpperCase().replace(/\s+/g,'')}
+let uprBarcodeIdCache=null,uprBarcodeIdCacheRows=null,uprBarcodeIdLength=-1;
+function uprBarcodeIdIndex(){
+ if(uprBarcodeIdCache&&uprBarcodeIdCacheRows===barcodeRows&&uprBarcodeIdLength===barcodeRows.length)return uprBarcodeIdCache;
+ const index=new Map();
+ for(const b of barcodeRows||[]){
+  const id=String(b.tovarId??'').trim(),code=String(b.barcode??'').trim();
+  if(!id||!/^\d{13}$/.test(code))continue;
+  if(!index.has(id))index.set(id,new Set());
+  index.get(id).add(code);
+ }
+ uprBarcodeIdCache=index;uprBarcodeIdCacheRows=barcodeRows;uprBarcodeIdLength=barcodeRows.length;
+ return index;
+}
 function uprResolvedBarcode(x){
  const direct=[x?.barcode,x?.shtrixCode,x?.shtrix_code,x?.shtrix,x?.bar,x?.gtin]
   .map(v=>String(v??'').trim()).find(v=>/^\d{13}$/.test(v));
@@ -817,7 +830,7 @@ function uprResolvedBarcode(x){
  if(byPc.length===1)return byPc[0];
  const id=String(x?.tovarId??'').trim();
  if(id){
-  const byId=[...new Set((barcodeRows||[]).filter(b=>String(b.tovarId??'').trim()===id).map(b=>String(b.barcode??'').trim()).filter(v=>/^\d{13}$/.test(v)))];
+  const byId=[...(uprBarcodeIdIndex().get(id)||[])];
   if(byId.length===1)return byId[0];
  }
  return '';
@@ -839,6 +852,23 @@ function invoiceVerifiedBarcode(l,inn){
  }
  return '';
 }
+let uprReceiptIndex=null,uprReceiptIndexRows=null,uprReceiptIndexLength=-1;
+function uprSupplierReceiptCandidates(names,ids){
+ const rows=records[3]||[];
+ if(!uprReceiptIndex||uprReceiptIndexRows!==rows||uprReceiptIndexLength!==rows.length){
+  const byName=new Map(),byId=new Map();
+  for(const x of rows){
+   const name=uprSupplierNorm(x.supplier),id=String(x.supplierId||'');
+   if(name){if(!byName.has(name))byName.set(name,[]);byName.get(name).push(x)}
+   if(id){if(!byId.has(id))byId.set(id,[]);byId.get(id).push(x)}
+  }
+  uprReceiptIndex={byName,byId};uprReceiptIndexRows=rows;uprReceiptIndexLength=rows.length;
+ }
+ const out=new Set();
+ for(const name of names)for(const x of uprReceiptIndex.byName.get(name)||[])out.add(x);
+ for(const id of ids)for(const x of uprReceiptIndex.byId.get(id)||[])out.add(x);
+ return [...out];
+}
 function ehfUprCompare(d){
  const invoice=uprInvoiceNorm(d.f_no),inn=String(d.s_inn||'').replace(/\D/g,'');
  const linkedIds=new Set(supplierEntities().filter(x=>String(x.inn||'').replace(/\D/g,'')===inn).map(x=>String(x.supplierId)));
@@ -851,7 +881,7 @@ function ehfUprCompare(d){
  const allStoreLinks=storeCompanyRows();
  const buyerStores=new Set(storeLinks.flatMap(x=>[String(x.storeName||'').trim().toLocaleLowerCase(),String(x.storeId||'').trim().toLocaleLowerCase()]).filter(Boolean));
  const hasStoreMap=allStoreLinks.length>0;
- const related=all.filter(x=>(supplierNames.has(uprSupplierNorm(x.supplier))||supplierMainIds.has(String(x.supplierId||'')))&&
+ const related=uprSupplierReceiptCandidates(supplierNames,supplierMainIds).filter(x=>
   (!hasStoreMap||(buyerStores.has(String(x.store||'').trim().toLocaleLowerCase())||buyerStores.has(String(x.storeId||'').trim().toLocaleLowerCase()))));
  const expectedRaw=(d.lines||[]).map(l=>({
   name:String(l.nm||'').trim(),
@@ -1226,6 +1256,7 @@ function dxMatchSetCircle(el,percent,state,label){
 }
 function dxMatchAutoDraw(groups){
  const token=++dxMatchToken;
+ uprReceiptIndex=null;uprBarcodeIdCache=null;
  const signature=[(records[3]||[]).length,(barcodeRows||[]).length,dxDocs.length,supplierEntities().length,suppliers().length,Object.keys(tasnifMatches||{}).length].join(':');
  if(signature!==dxMatchStamp){dxMatchStamp=signature;dxMatchCache=new WeakMap()}
  const jobs=[],totals=new Map();
