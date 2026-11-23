@@ -1620,11 +1620,11 @@ async function uprAssignBarcode(row,code){
 function uprGeneratedBarcode(row){
  const id=String(row?.tovarId??'').trim();
  // 7 raqamli ichki prefiks + 6 raqamli Tovar ID = 13 raqam.
- if(!/^\\d{6}$/.test(id))return '';
+ if(!/^\d{6}$/.test(id))return '';
  return '1000000'+id;
 }
 function uprGeneratedBarcodeError(row,code){
- if(!code)return 'Tovar ID aynan 6 raqam bo‘lishi kerak.';
+ if(!code)return 'Tovar ID 6 raqamli bo‘lishi kerak (1000000 + Tovar ID = 13 raqam).';
  const pc=barcodeKey(row.variantCode);
  const sameId=(records[3]||[]).some(x=>String(x.tovarId??'').trim()===String(row.tovarId??'').trim()&&barcodeKey(x.variantCode)!==pc);
  if(sameId)return 'Bu Tovar ID bir nechta PC variantga tegishli. Avtomatik biriktirish xavfli.';
