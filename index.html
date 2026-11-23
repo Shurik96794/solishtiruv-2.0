@@ -281,6 +281,12 @@ function didoxBarcodeStages(l){
  const saved=tasnifMatches[JSON.stringify([name,mxik,original])]||tasnifMatches[JSON.stringify([name,mxik,''])];
  const code=typeof saved==='string'?saved:String(saved?.barcode||'').trim();
  if(tasnifBarcode13(code))return {code,source:'Nomenklatura mosligi'};
+ // UPRga aylantirilgan nom katalogdagi aniq nom bilan teng bo‘lsa,
+ // faqat yagona 13 xonali shtrix-kodni avtomatik qabul qilamiz.
+ const byName=didoxBarcodeNameIndex();
+ const exact=byName.get(tasnifNameKey(tasnifUprStyleName(name)))||byName.get(tasnifNameKey(name));
+ const codes=(exact?.codes||[]).filter(tasnifBarcode13);
+ if(codes.length===1)return {code:codes[0],source:'UPR nomi orqali avtomatik'};
  return {code:'',source:'Nomenklatura solishtirish kerak'};
 }
 function didoxLinkedBarcode(l){
@@ -623,7 +629,14 @@ function tasnifMatchRows(){
   const saved=tasnifMatches[key],savedName=typeof saved==='object'?saved?.uprName:'';
   const savedUpr=savedName?byName.get(tasnifNameKey(savedName)):null;
   const exact=byName.get(nameKey)||byName.get(tasnifNameKey(tasnifUprStyleName(x.name)));
-  if(!cache.has(nameKey)){const normalizedName=tasnifUprStyleName(x.name),phone=tasnifPhoneCandidate(x.name,catalog);cache.set(nameKey,{barcode:phone?.item?.codes?.length===1?{...phone,barcode:phone.item.codes[0]}:tasnifBarcodeNameCandidate(normalizedName,catalog)||tasnifBarcodeNameCandidate(x.name,catalog),name:phone?.item||tasnifAutoUprCandidate(normalizedName,catalog)||tasnifAutoUprCandidate(x.name,catalog)});}
+  if(!cache.has(nameKey)){
+   // Aniq UPR nomi mavjud bo‘lsa taxminiy qidiruvga o'tmasdan shu nomning kodini olamiz.
+   if(exact)cache.set(nameKey,{barcode:null,name:exact});
+   else{
+    const normalizedName=tasnifUprStyleName(x.name),phone=tasnifPhoneCandidate(x.name,catalog);
+    cache.set(nameKey,{barcode:phone?.item?.codes?.length===1?{...phone,barcode:phone.item.codes[0]}:tasnifBarcodeNameCandidate(normalizedName,catalog)||tasnifBarcodeNameCandidate(x.name,catalog),name:phone?.item||tasnifAutoUprCandidate(normalizedName,catalog)||tasnifAutoUprCandidate(x.name,catalog)});
+   }
+  }
   const found=cache.get(nameKey);
   const chosen=savedUpr||exact||found.barcode?.item||found.name;
   // UPR nomi tasdiqlangan yoki aynan mos bo‘lsa, uning yagona haqiqiy kodi olinadi.
@@ -852,7 +865,9 @@ function invoiceVerifiedBarcode(l,inn){
  const name=String(l.nm||'').trim(),mxik=String(l.mxik||'').trim();
  const saved=tasnifMatches[JSON.stringify([name,mxik,raw])]||tasnifMatches[JSON.stringify([name,mxik,''])];
  const code=typeof saved==='string'?saved:String(saved?.barcode||'').trim();
- if((typeof saved==='string'||saved?.manual)&&/^\d{13}$/.test(code))return code;
+ if(/^\d{13}$/.test(code))return code;
+ const stage=didoxBarcodeStages(l);
+ if(stage.code)return stage.code;
  const mapped=ehfMappings[[String(inn||''),mxik,ehfNormalize(name)].join('|')];
  if(mapped){
   const hits=new Set((records[3]||[]).filter(x=>String(x.tovarId||'')===String(mapped.id||'')&&String(x.variantCode||'')===String(mapped.pc||'')).map(uprResolvedBarcode).filter(x=>/^\d{13}$/.test(x)));
