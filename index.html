@@ -1690,7 +1690,7 @@ function storeCompanyPage(){
  '<div class="sc-filters"><input id="storeCompanySearch" aria-label="Do‘kon, MCHJ yoki STIR bo‘yicha qidirish" placeholder="⌕ Do‘kon ID, nomi, MCHJ yoki STIR..." value="'+esc(storeCompanySearch)+'"><select id="storeCompanyStore" aria-label="Do‘kon filtri">'+opts([['all','Barcha do‘konlar'],...shops],storeCompanyStore)+'</select><select id="storeCompanyType" aria-label="Faoliyat turi filtri">'+opts([['all','Barcha faoliyat turlari'],...types.map(t=>[t,t])],storeCompanyType)+'</select><button type="button" class="secondary" id="storeCompanyReset">↺ Tozalash</button></div>'+
  '<p id="storeCompanyMessage" class="muted sc-message"'+(!storeCompanyNotice?' hidden':'')+'>'+esc(storeCompanyNotice)+'</p>'+
  '<details class="upr-supplier-panel" id="storeCompanyActivities"><summary>▸ Faoliyat turlari spravochnigi ('+types.length+')</summary><div style="padding:14px"><div class="toolbar"><input id="storeActivityName" placeholder="Yangi faoliyat turi" style="flex:1"><button type="button" id="storeActivityAdd" class="secondary">＋ Qo‘shish</button></div><div style="margin-top:10px">'+types.map(t=>'<span class="sc-type">'+esc(t)+'</span>').join('')+'</div></div></details>'+
- '<p class="sc-count">Jami: <b>'+rows.length+'</b> · Filtr bo‘yicha: <b>'+filtered.length+'</b></p><div class="sc-table"><table><thead><tr><th>Do‘kon ID</th><th>Do‘kon nomi</th><th>MCHJ</th><th>STIR</th><th>Faoliyat turi</th><th>Amal</th></tr></thead><tbody>'+filtered.slice(0,300).map(x=>'<tr><td>'+esc(x.storeId)+'</td><td>'+esc(x.storeName)+'</td><td>'+esc(x.company)+'</td><td>'+esc(x.inn)+'</td><td>'+esc(x.type)+'</td><td><button type="button" class="sc-edit" data-sc-key="'+esc(storeCompanyKey(x))+'" title="Bog‘lanishni tahrirlash">✎</button></td></tr>').join('')+'</tbody></table></div><p class="muted sc-footnote">Dastlabki 300 ta mos bog‘lanish ko‘rsatiladi.</p></div>';
+ '<p class="sc-count">Jami: <b>'+rows.length+'</b> · Filtr bo‘yicha: <b>'+filtered.length+'</b></p><div class="sc-table"><table><thead><tr><th>Do‘kon ID</th><th>Do‘kon nomi</th><th>MCHJ</th><th>STIR</th><th>Faoliyat turi</th><th>Amal</th></tr></thead><tbody>'+filtered.slice(0,300).map(x=>'<tr><td>'+esc(x.storeId)+'</td><td>'+esc(x.storeName)+'</td><td>'+esc(x.company)+'</td><td>'+esc(x.inn)+'</td><td>'+esc(x.type)+'</td><td><button type="button" class="sc-edit" data-sc-key="'+esc(storeCompanyKey(x))+'" title="Bog‘lanishni tahrirlash">✎</button> <button type="button" class="sc-delete" data-sc-key="'+esc(storeCompanyKey(x))+'" title="Bog‘lanishni o‘chirish" aria-label="Bog‘lanishni o‘chirish" style="color:#b91c1c;border:1px solid #fecaca;background:#fff1f2;border-radius:6px;padding:6px 10px;cursor:pointer">🗑</button></td></tr>').join('')+'</tbody></table></div><p class="muted sc-footnote">Dastlabki 300 ta mos bog‘lanish ko‘rsatiladi.</p></div>';
 }
 function bindStoreCompany(){
  document.getElementById('storeCompanyExcel').onchange=importStoreCompanyExcel;
@@ -1701,6 +1701,7 @@ function bindStoreCompany(){
  document.getElementById('storeCompanyExport').onclick=exportStoreCompanies;
  document.getElementById('storeCompanyAdd').onclick=()=>editStoreCompany(null);
  document.querySelectorAll('.sc-edit').forEach(b=>b.onclick=()=>editStoreCompany(b.dataset.scKey));
+ document.querySelectorAll('.sc-delete').forEach(b=>b.onclick=()=>deleteStoreCompany(b.dataset.scKey));
  document.getElementById('storeActivityAdd').onclick=()=>{const el=document.getElementById('storeActivityName'),v=el.value.trim();if(!v)return;const list=storeCompanyActivities();if(list.some(x=>x.toLocaleLowerCase()===v.toLocaleLowerCase())){alert('Bu faoliyat turi mavjud');return}records.activityTypes=[...list,v];save();drawStoreCompanyTable();document.getElementById('storeCompanyActivities').open=true};
 }
 function drawStoreCompanyTable(focusId){
@@ -1710,6 +1711,24 @@ function drawStoreCompanyTable(focusId){
  el.innerHTML=storeCompanyPage();bindStoreCompany();
  if(detailsOpen)document.getElementById('storeCompanyActivities').open=true;
  if(focusId){const input=document.getElementById(focusId);input.focus();if(pos!==null&&pos!==undefined)input.setSelectionRange(pos,pos)}
+}
+function deleteStoreCompany(key){
+ const rows=storeCompanyRows();
+ const row=rows.find(r=>storeCompanyKey(r)===key);
+ if(!row)return;
+ const description=[row.storeName,row.company,'STIR: '+row.inn,'Faoliyat: '+row.type].join(' | ');
+ if(!confirm('Quyidagi do‘kon–korxona bog‘lanishini o‘chirasizmi?\\n\\n'+description+'\\n\\nFaqat tanlangan bog‘lanish o‘chiriladi.'))return;
+ const previous=records.storeCompanies;
+ records.storeCompanies=rows.filter(r=>storeCompanyKey(r)!==key);
+ try{
+  save();
+  storeCompanyNotice='Bog‘lanish o‘chirildi: '+description;
+  rcCompareCache=new WeakMap();rcCacheSignature='';
+  drawStoreCompanyTable();
+ }catch(err){
+  records.storeCompanies=previous;
+  alert('O‘chirishda saqlash xatosi: '+err.message);
+ }
 }
 function editStoreCompany(key){
  const current=key?storeCompanyRows().find(r=>storeCompanyKey(r)===key):null;
