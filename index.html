@@ -1103,28 +1103,60 @@ function dxInvoiceDialog(d){
  '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:20px;margin:18px 0"><div><b>Yetkazib beruvchi</b><p>'+esc(d.supplier||'')+'</p><p>STIR: '+esc(d.s_inn||'')+'</p></div><div><b>Sotib oluvchi</b><p>'+esc(d.buyer||'')+'</p><p>STIR: '+esc(d.b_inn||'')+'</p></div></div>'+
  '<p><b>Shartnoma:</b> '+esc(d.sh_no||d.contract_no||'—')+' · '+esc(d.sh_sana||d.contract_date||'—')+'</p>'+
  '<div style="overflow:auto;max-height:55vh"><table><thead><tr><th>№</th><th>Mahsulot nomi</th><th>MXIK</th><th>Shtrix-kod</th><th>O‘lchov birligi</th><th>Miqdor</th><th>Birlik narxi (QQS bilan)</th><th>Jami (QQS bilan)</th></tr></thead><tbody>'+
- (d.lines||[]).map((l,i)=>'<tr><td>'+(i+1)+'</td><td>'+esc(l.nm||'')+'</td><td>'+esc(l.mxik||'')+'</td><td data-dx-barcode="'+i+'">'+esc(tasnifBarcode13(l.bar||l.barcode)?String(l.bar||l.barcode):'Aniqlanmoqda…')+'</td><td>'+esc(l.unit||'')+'</td><td>'+esc(l.q??'')+'</td><td>'+money(l.u)+'</td><td>'+money(l.sum_q)+'</td></tr>').join('')+
+ (d.lines||[]).map((l,i)=>'<tr><td>'+(i+1)+'</td><td>'+esc(l.nm||'')+'</td><td>'+esc(l.mxik||'')+'</td><td data-dx-barcode="'+i+'">'+esc(tasnifBarcode13(l.bar||l.barcode)?String(l.bar||l.barcode):'—')+'</td><td>'+esc(l.unit||'')+'</td><td>'+esc(l.q??'')+'</td><td>'+money(l.u)+'</td><td>'+money(l.sum_q)+'</td></tr>').join('')+
  '</tbody><tfoot><tr><th colspan="7">Jami</th><th>'+money(total)+'</th></tr></tfoot></table></div>'+
  '<p class="muted">Tasdiqlangan fakturalar avtomatik EHF kirimlari va 1C mahsulotlar reyestriga o‘tadi.</p>'+
  '<p class="muted">Ma’lumotlar Didox API orqali olingan. Bu ko‘rish shakli bo‘lib, elektron hujjatning asl nusxasi yoki imzo tasdig‘i emas. QQS tafsilotlari API orqali alohida olinmaguncha hisoblanmaydi.</p>';
  document.body.appendChild(dlg);dlg.querySelector('#dxClose').onclick=()=>dlg.close();dlg.onclose=()=>dlg.remove();dlg.showModal();
- // Asl faktura qatorlari darhol ko‘rsatiladi. Shtrix-kodlar kichik
- // partiyalarda to‘ldiriladi, shunda katta faktura ham qotib qolmaydi.
+ // Avval saqlangan va qo‘lda biriktirilgan kodlarni tez ko‘rsatamiz.
+ // Og‘ir avtomatik nom qidiruvi asosiy faktura oynasini bloklamaydi.
  const lines=d.lines||[];
- let offset=0,stopped=false;
- const fill=()=>{
-  if(stopped||!dlg.isConnected)return;
-  const limit=Math.min(offset+8,lines.length);
-  for(;offset<limit;offset++){
-   const l=lines[offset],cell=dlg.querySelector('[data-dx-barcode="'+offset+'"]');
-   if(!cell)continue;
-   try{cell.textContent=didoxLinkedBarcode({...l,_supplierInn:d.s_inn})||'—'}
-   catch(err){cell.textContent='—';console.warn('Didox shtrix-kod mosligi:',err)}
+ const quickCode=l=>{
+  const raw=String(l.bar||l.barcode||'').trim();
+  if(tasnifBarcode13(raw))return raw;
+  const name=String(l.nm||'').trim(),mxik=String(l.mxik||'').trim();
+  const saved=tasnifMatches[JSON.stringify([name,mxik,raw])]||tasnifMatches[JSON.stringify([name,mxik,''])];
+  const code=typeof saved==='string'?saved:String(saved?.barcode||'').trim();
+  if(tasnifBarcode13(code))return code;
+  const mapped=ehfMappings[[String(d.s_inn||''),mxik,ehfNormalize(name)].join('|')];
+  if(mapped){
+   const codes=new Set((barcodeRows||[]).filter(x=>String(x.pc||'')===String(mapped.pc||'')&&tasnifBarcode13(x.barcode)).map(x=>String(x.barcode)));
+   if(codes.size===1)return [...codes][0];
   }
-  if(offset<lines.length)setTimeout(fill,0);
+  return '';
  };
+ lines.forEach((l,i)=>{
+  const cell=dlg.querySelector('[data-dx-barcode="'+i+'"]');
+  if(!cell)return;
+  try{cell.textContent=quickCode(l)||'—'}catch(e){cell.textContent='—'}
+ });
+ const toolbar=document.createElement('div');
+ toolbar.style.cssText='display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0';
+ toolbar.innerHTML='<button type="button" class="secondary" data-dx-resolve>↻ Qolgan shtrix-kodlarni aniqlash</button><span data-dx-progress class="muted" aria-live="polite">Saqlangan kodlar ko‘rsatildi. Chiziq (—) — kod topilmadi.</span>';
+ const table=dlg.querySelector('table');
+ if(table)table.parentElement.before(toolbar);
+ const resolveBtn=toolbar.querySelector('[data-dx-resolve]'),progress=toolbar.querySelector('[data-dx-progress]');
+ let stopped=false;
  dlg.addEventListener('close',()=>{stopped=true},{once:true});
- setTimeout(fill,0);
+ resolveBtn.onclick=()=>{
+  resolveBtn.disabled=true;
+  let offset=0,found=0;
+  const fill=()=>{
+   if(stopped||!dlg.isConnected)return;
+   if(offset>=lines.length){
+    progress.textContent='Tekshiruv tugadi: '+found+' ta qo‘shimcha shtrix-kod aniqlandi.';
+    resolveBtn.disabled=false;return;
+   }
+   const i=offset++,l=lines[i],cell=dlg.querySelector('[data-dx-barcode="'+i+'"]');
+   if(cell&&cell.textContent.trim()==='—'){
+    try{const code=didoxLinkedBarcode({...l,_supplierInn:d.s_inn});if(tasnifBarcode13(code)){cell.textContent=code;found++}}
+    catch(err){console.warn('Didox shtrix-kod mosligi:',err)}
+   }
+   progress.textContent=offset+' / '+lines.length+' qator tekshirildi';
+   setTimeout(fill,0);
+  };
+  setTimeout(fill,0);
+ };
 }
 function dxStatusBadge(d){const st=dxStatus(d);return '<span class="dx-status dx-status-'+st.type+'">'+(st.type==='signed'?'✓ ':st.type==='pending'?'◷ ':st.type==='rejected'?'✕ ':'• ')+esc(st.label)+'</span>'}
 function dxGroupBadge(g){const statuses=g.docs.map(x=>dxStatus(x.d).type),signed=statuses.filter(x=>x==='signed').length,pending=statuses.filter(x=>x==='pending').length;if(signed===statuses.length)return '<span class="dx-status dx-status-signed">✓ Imzolangan</span>';if(pending===statuses.length)return '<span class="dx-status dx-status-pending">◷ Tasdiqlash kutilmoqda</span>';return '<span class="dx-status dx-status-unknown">'+signed+' imzolangan · '+pending+' kutilmoqda</span>'}
