@@ -400,11 +400,11 @@ function tasnifUprCatalog(){
   const code=String(x.barcode||'').trim(),pc=barcodeKey(x.pc);
   if(!code)continue;
   const name=names.unique(names.byPc.get(pc))||names.unique(names.byId.get(String(x.tovarId??'').trim()));
-  if(name){const k=tasnifNameKey(name);barcodeNameDisplay.set(k,name);if(!byBarcodeName.has(k))byBarcodeName.set(k,new Set());byBarcodeName.get(k).add(code)}
+  if(name&&!tasnifIsKPrefixProduct(name)){const k=tasnifNameKey(name);barcodeNameDisplay.set(k,name);if(!byBarcodeName.has(k))byBarcodeName.set(k,new Set());byBarcodeName.get(k).add(code)}
  }
  for(const x of records[3]||[]){
   const name=String(x.product||'').trim(),key=tasnifNameKey(name),pc=barcodeKey(x.variantCode);
-  if(!key)continue;
+  if(!key||tasnifIsKPrefixProduct(name))continue;
   if(!byName.has(key))byName.set(key,{name,codes:new Set()});
   const item=byName.get(key);
   for(const code of byPc.get(pc)||[])item.codes.add(code);
@@ -1198,11 +1198,14 @@ function parseCSV(line){let out=[],cur='',q=false;for(let i=0;i<line.length;i++)
 
 let uprSupplierSelection=new Set();
 function uprSupplierNorm(v){return String(v??'').trim().toLocaleLowerCase().replace(/\s+/g,' ')}
+// K/M bilan alohida prefiks sifatida boshlangan texnik nomlar ro‘yxatda yashiriladi.
+// Xom UPR kirimlari o‘chirilmaydi.
+function uprHiddenKmPrefix(value){return /^[\\s\"'“”«»]*[кkмm](?=\\s|[\"'“”«»])/i.test(String(value||''))}
 function uprSupplierCandidates(){
  const map=new Map(),known=new Set(suppliers().map(x=>uprSupplierNorm(x.name)));
  for(const x of records[3]||[]){
   const name=String(x.supplier??'').trim(),id=String(x.supplierId??'').trim();
-  if(!name)continue;
+  if(!name||uprHiddenKmPrefix(name))continue;
   const key=id?'id:'+id:'name:'+uprSupplierNorm(name);
   if(!map.has(key))map.set(key,{key,id,name,count:0,exists:false});
   map.get(key).count++;
@@ -1269,7 +1272,7 @@ function uprRefreshFilterOptions(){
  }
  const supplier=document.getElementById('uprSupplierOptions');
  if(supplier){
-  const names=[...new Set(all.map(x=>String(x.supplier??'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  const names=[...new Set(all.map(x=>String(x.supplier??'').trim()).filter(n=>n&&!uprHiddenKmPrefix(n)))].sort((a,b)=>a.localeCompare(b));
   supplier.innerHTML=names.map(n=>'<option value="'+esc(n)+'"></option>').join('');
  }
 }
