@@ -948,7 +948,12 @@ function ehfUprCompare(d){
   // Bir nechta do‘kon/sanadagi kirimlarni shtrix-kod va miqdor bo‘yicha yig‘ish.
   // Boshqa faktura raqamiga bog‘langan kirimlar olinmaydi.
   const codes=new Set(expected.map(e=>e.code).filter(Boolean));
-  const eligible=related.filter(r=>codes.has(uprCode(r))&&!uprInvoiceNumber(r));
+  const eligible=related.filter(r=>{
+   if(!codes.has(uprCode(r)))return false;
+   const linkedInvoice=uprInvoiceNorm(uprInvoiceNumber(r));
+   // Boshqa raqamli fakturaga tegishli kirim avtomatik qo‘shilmaydi.
+   return !linkedInvoice||linkedInvoice===invoice;
+  });
   const gap=r=>{
    const dt=uprDateISO(r.date);
    const a=Date.parse(String(dt||'')+'T00:00:00Z'),b=Date.parse(String(targetDate||'')+'T00:00:00Z');
@@ -962,7 +967,15 @@ function ehfUprCompare(d){
    const pool=within.length?within:options;
    const exact=pool.filter(r=>Math.abs(Number(r.qty)-e.qty)<0.000001);
    if(exact.length===1){selected.push(exact[0]);if(gap(exact[0])>7)warnings.push('sana');continue}
-   if(exact.length>1){warnings.push('takroriy kirim');continue}
+   if(exact.length>1){
+    // Bir xil shtrix-kod va miqdordagi kirimlar orasida sanasi eng yaqin
+    // yagona bo‘lsa tanlanadi; boshqa kirimlarni taxminan qo‘shmaymiz.
+    const sorted=exact.slice().sort((a,b)=>gap(a)-gap(b));
+    if(gap(sorted[0])<gap(sorted[1])){
+     selected.push(sorted[0]);if(gap(sorted[0])>7)warnings.push('sana');
+    }else warnings.push('takroriy kirim');
+    continue;
+   }
    let remaining=e.qty;
    const picked=[];
    for(const r of pool){
@@ -976,6 +989,19 @@ function ehfUprCompare(d){
    }else if(pool.length)warnings.push('miqdor yoki qisman kirim');
   }
   candidates=[...new Set(selected)];
+  // Diagnostika: fakturaga biriktirilgan kirimni avtomatik tanlab bo‘lmasa,
+  // mos kodli yozuvni ko‘rsatamiz, ammo xavfsizlik uchun tasdiqlamaymiz.
+  if(!candidates.length&&related.length){
+   const potential=related.filter(r=>codes.has(uprCode(r)));
+   if(potential.length){
+    const chosen=[];
+    for(const e of expected){
+     const matches=potential.filter(r=>uprCode(r)===e.code&&Math.abs((Number(r.qty)||0)-e.qty)<0.000001&&Math.abs((Number(r.qty)||0)*(Number(r.price)||0)-e.total)<=0.01);
+     if(matches.length===1)chosen.push(matches[0]);
+    }
+    if(chosen.length){candidates=[...new Set(chosen)];warnings.push('kirimning faktura raqami yoki sanasini tekshirish');}
+   }
+  }
   method='STIR → UPR ta’minotchi → shtrix-kod → do‘konlar kirimlarini jamlash';
   ambiguous=warnings.length>0;
  }
