@@ -795,7 +795,7 @@ function tasnifEditDidoxBarcode(x){
  if(!x)return;
  const overlay=document.createElement('div');
  overlay.className='upr-barcode-overlay';
- overlay.innerHTML='<section class="upr-barcode-dialog" role="dialog" aria-modal="true" aria-labelledby="tasnifEditTitle"><h3 id="tasnifEditTitle" style="color:#b91c1c">❗ Didox shtrix-kodini tuzatish</h3><div class="upr-info"><strong>Mahsulot:</strong> '+esc(x.name)+'<br><strong>MXIK:</strong> '+esc(x.mxik||'—')+'<br><strong>Hozirgi kod:</strong> '+esc(x.effectiveBarcode||'—')+'</div><p style="color:#b91c1c;font-weight:600">Diqqat! Bu mahalliy moslikni o‘zgartiradi. Asl Didox fakturasi o‘zgarmaydi.</p><label for="tasnifEditInput">Yangi 13 raqamli shtrix-kod</label><input id="tasnifEditInput" inputmode="numeric" maxlength="13" autocomplete="off" placeholder="13 raqamli kod"><p data-error style="color:#b91c1c" aria-live="polite"></p><div class="upr-actions"><button type="button" class="upr-close" data-cancel>Bekor</button><button type="button" class="upr-primary" data-save>✓ Saqlash</button></div></section>';
+ overlay.innerHTML='<section class="upr-barcode-dialog" role="dialog" aria-modal="true" aria-labelledby="tasnifEditTitle"><h3 id="tasnifEditTitle" style="color:#b91c1c">❗ Didox shtrix-kodini tuzatish</h3><div class="upr-info"><strong>Mahsulot:</strong> '+esc(x.name)+'<br><strong>MXIK:</strong> '+esc(x.mxik||'—')+'<br><strong>Hozirgi kod:</strong> '+esc(x.effectiveBarcode||'—')+'</div><p style="color:#b91c1c;font-weight:600">Diqqat! Bu mahalliy moslikni o‘zgartiradi. Asl Didox fakturasi o‘zgarmaydi.</p><label for="tasnifEditInput">Yangi 13 raqamli shtrix-kod</label><input id="tasnifEditInput" inputmode="numeric" maxlength="13" autocomplete="off" placeholder="13 raqamli kod"><p data-error style="color:#b91c1c" aria-live="polite"></p><div class="upr-actions"><button type="button" class="upr-close" data-cancel>Bekor</button><button type="button" class="upr-primary" data-save>🔗 Bog‘lash va saqlash</button></div></section>';
  document.body.appendChild(overlay);
  const input=overlay.querySelector('input'),error=overlay.querySelector('[data-error]');
  input.value=tasnifBarcode13(x.effectiveBarcode)?x.effectiveBarcode:'';
@@ -1646,19 +1646,23 @@ function drawRows(){
   return true;
  });
  const sum=arr.reduce((total,x)=>total+(Number(x.qty)||0)*(Number(x.price)||0),0);
- document.getElementById('rows').innerHTML='<p>Jami: <b>'+all.length+'</b> · Filtr bo‘yicha: <b>'+arr.length+'</b> · Kirim qiymati: <b>'+sum.toLocaleString('uz-UZ')+'</b></p><div style="overflow:auto"><table><thead><tr>'+['Do‘kon nomi','Tovar ID','Variant kodi','Ta’minotchi nomi','Tovar nomi','Soni','Narxi','Kirim sanasi','Shtrix-kod'].map(v=>'<th>'+v+'</th>').join('')+'</tr></thead><tbody>'+arr.slice(0,300).map((x,i)=>'<tr>'+[x.store,x.tovarId,x.variantCode,x.supplier,x.product,x.qty,x.price,x.date].map(v=>'<td>'+esc(v)+'</td>').join('')+'<td><span>'+esc(barcodeDisplay(x))+'</span>'+(!/^\d{13}$/.test(String(barcodeDisplay(x)).trim())?' <button type="button" class="secondary" data-upr-barcode="'+i+'" title="Shtrix-kod biriktirish" style="display:inline-flex;align-items:center;justify-content:center;margin-left:8px;padding:4px 8px;vertical-align:middle">✎</button>':'')+'</td></tr>').join('')+'</tbody></table></div>';
+ document.getElementById('rows').innerHTML='<p>Jami: <b>'+all.length+'</b> · Filtr bo‘yicha: <b>'+arr.length+'</b> · Kirim qiymati: <b>'+sum.toLocaleString('uz-UZ')+'</b></p><div style="overflow:auto"><table><thead><tr>'+['Do‘kon nomi','Tovar ID','Variant kodi','Ta’minotchi nomi','Tovar nomi','Soni','Narxi','Kirim sanasi','Shtrix-kod'].map(v=>'<th>'+v+'</th>').join('')+'</tr></thead><tbody>'+arr.slice(0,300).map((x,i)=>'<tr>'+[x.store,x.tovarId,x.variantCode,x.supplier,x.product,x.qty,x.price,x.date].map(v=>'<td>'+esc(v)+'</td>').join('')+'<td><span>'+esc(barcodeDisplay(x))+'</span>'+(!/^\d{13}$/.test(String(barcodeDisplay(x)).trim())?' <button type="button" class="secondary" data-upr-barcode="'+i+'" title="Tovar ID orqali shtrix-kod yaratish va bog‘lash" aria-label="Shtrix-kod yaratish va bog‘lash" style="display:inline-flex;align-items:center;justify-content:center;margin-left:8px;padding:4px 8px;vertical-align:middle">🔗</button>':'')+'</td></tr>').join('')+'</tbody></table></div>';
  document.querySelectorAll('#rows [data-upr-barcode]').forEach(btn=>btn.onclick=()=>{
   const row=arr[Number(btn.dataset.uprBarcode)];
   if(!row||document.querySelector('.upr-barcode-overlay'))return;
   const overlay=document.createElement('div');
   overlay.className='upr-barcode-overlay';
   overlay.setAttribute('role','presentation');
-  overlay.innerHTML='<section class="upr-barcode-dialog" role="dialog" aria-modal="true" aria-labelledby="uprBarcodeTitle"><h3 id="uprBarcodeTitle">▥ Shtrix-kod biriktirish</h3><div class="upr-info"><strong>Mahsulot:</strong> '+esc(row.product||'—')+'<br><strong>Variant kodi:</strong> '+esc(row.variantCode||'—')+'<br><strong>Do‘kon:</strong> '+esc(row.store||'—')+'</div><label for="uprBarcodeInput"><strong>13 raqamli shtrix-kod</strong></label><input id="uprBarcodeInput" type="text" inputmode="numeric" maxlength="13" autocomplete="off" placeholder="Masalan: 4780119694722"><div class="muted" style="font-size:12px">Saqlanganda SHTRIX KOD bo‘limiga ham biriktiriladi.</div><p id="uprBarcodeError" style="color:#c0392b;min-height:18px;margin:8px 0 0" aria-live="polite"></p><div class="upr-actions"><button type="button" class="upr-close" data-cancel>Bekor qilish</button><button type="button" class="upr-primary" data-save>✓ Saqlash</button></div></section>';
+  overlay.innerHTML='<section class="upr-barcode-dialog" role="dialog" aria-modal="true" aria-labelledby="uprBarcodeTitle"><h3 id="uprBarcodeTitle">🔗 Shtrix-kod yaratish va bog‘lash</h3><div class="upr-info"><strong>Mahsulot:</strong> '+esc(row.product||'—')+'<br><strong>Variant kodi:</strong> '+esc(row.variantCode||'—')+'<br><strong>Do‘kon:</strong> '+esc(row.store||'—')+'</div><label for="uprBarcodeInput"><strong>13 raqamli shtrix-kod</strong></label><input id="uprBarcodeInput" type="text" inputmode="numeric" maxlength="13" autocomplete="off" placeholder="Masalan: 4780119694722"><div class="muted" style="font-size:12px">Tovar ID + 1000000 orqali ichki kod yaratiladi va PC variant bilan SHTRIX KOD bo‘limiga bog‘lanadi.</div><button type="button" class="secondary" data-generate style="margin-top:10px">⚙ Tovar ID dan yaratish</button><p id="uprBarcodeError" style="color:#c0392b;min-height:18px;margin:8px 0 0" aria-live="polite"></p><div class="upr-actions"><button type="button" class="upr-close" data-cancel>Bekor qilish</button><button type="button" class="upr-primary" data-save>✓ Saqlash</button></div></section>';
   document.body.appendChild(overlay);
-  const input=overlay.querySelector('input'),saveBtn=overlay.querySelector('[data-save]'),cancelBtn=overlay.querySelector('[data-cancel]'),error=overlay.querySelector('#uprBarcodeError');
+  const input=overlay.querySelector('input'),saveBtn=overlay.querySelector('[data-save]'),cancelBtn=overlay.querySelector('[data-cancel]'),generateBtn=overlay.querySelector('[data-generate]'),error=overlay.querySelector('#uprBarcodeError');
   const generated=uprGeneratedBarcode(row),generationError=uprGeneratedBarcodeError(row,generated);
   if(generated&&!generationError){input.value=generated;error.textContent='Tovar ID asosida taklif qilindi: '+generated+'. Saqlashni bosing.';error.style.color='#147d48'}
   else if(generationError){error.textContent=generationError+' Shtrix-kodni qo‘lda kiritishingiz mumkin.'}
+  generateBtn.onclick=()=>{
+   if(generationError){error.style.color='#c0392b';error.textContent=generationError;return}
+   input.value=generated;error.style.color='#147d48';error.textContent='Yaratildi: '+generated+'. Endi «Bog‘lash va saqlash» tugmasini bosing.';input.focus();
+  };
   const previous=document.activeElement;
   const close=()=>{document.removeEventListener('keydown',keyHandler);overlay.remove();if(previous?.isConnected)previous.focus()};
   const keyHandler=e=>{if(e.key==='Escape'){e.preventDefault();close()}if(e.key==='Tab'){const first=input,last=saveBtn;if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}}};
@@ -1671,7 +1675,7 @@ function drawRows(){
    if(code===generated&&generationError){error.textContent=generationError;input.focus();return}
    saveBtn.disabled=true;saveBtn.textContent='Saqlanmoqda…';error.textContent='';
    const ok=await uprAssignBarcode(row,code);
-   if(ok)close();else{saveBtn.disabled=false;saveBtn.textContent='✓ Saqlash';error.textContent='Saqlash bajarilmadi. Qayta urinib ko‘ring.'}
+   if(ok)close();else{saveBtn.disabled=false;saveBtn.textContent='🔗 Bog‘lash va saqlash';error.textContent='Saqlash bajarilmadi. Qayta urinib ko‘ring.'}
   };
   input.onkeydown=e=>{if(e.key==='Enter')saveBtn.click()};
   input.focus();
