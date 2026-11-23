@@ -1303,13 +1303,32 @@ function dxMatchSetCircle(el,percent,state,label){
  el.querySelector('small').textContent=label;
  el.title=label+' · '+pct+'% mos';
 }
+function dxMatchExcludeCircle(el){
+ if(!el)return;
+ el.style.setProperty('--pct','0');
+ el.dataset.state='excluded';
+ const strong=el.querySelector('strong'),small=el.querySelector('small');
+ if(strong)strong.textContent='—';
+ if(small)small.textContent='Hisobga kirmaydi';
+ el.title='Rad etilgan yoki bekor qilingan faktura — moslik foiziga kiritilmaydi';
+}
 function dxMatchAutoDraw(groups){
  const token=++dxMatchToken;
  uprReceiptIndex=null;uprBarcodeIdCache=null;
  const signature=[(records[3]||[]).length,(barcodeRows||[]).length,dxDocs.length,supplierEntities().length,suppliers().length,Object.keys(tasnifMatches||{}).length].join(':');
  if(signature!==dxMatchStamp){dxMatchStamp=signature;dxMatchCache=new WeakMap()}
  const jobs=[],totals=new Map();
- groups.forEach((g,gi)=>{totals.set(gi,{matched:0,rows:0,linked:true,done:0,count:g.docs.length});g.docs.forEach((x,j)=>jobs.push({gi,j,d:x.d,visible:dxOpenSuppliers.has(g.key)}))});
+ groups.forEach((g,gi)=>{
+  const eligible=g.docs.filter(x=>dxStatus(x.d).type!=='rejected');
+  totals.set(gi,{matched:0,rows:0,linked:true,done:0,count:eligible.length});
+  g.docs.forEach((x,j)=>{
+   if(dxStatus(x.d).type==='rejected'){
+    dxMatchExcludeCircle(document.querySelector('[data-dx-match="qty-'+gi+'-'+j+'"]'));
+    dxMatchExcludeCircle(document.querySelector('[data-dx-match="price-'+gi+'-'+j+'"]'));
+   }else jobs.push({gi,j,d:x.d,visible:dxOpenSuppliers.has(g.key)});
+  });
+  if(!eligible.length)dxMatchExcludeCircle(document.querySelector('[data-dx-match="supplier-'+gi+'"]'));
+ });
  // Ochilgan ta’minotchining fakturalari birinchi hisoblanadi.
  jobs.sort((a,b)=>Number(b.visible)-Number(a.visible));
  let offset=0;
