@@ -923,7 +923,7 @@ function ehfUprCompare(d){
    const key=code?'code:'+code:'nocode:'+String(side==='didox'?x.name||'':x.tovarId||x.variantCode||Math.random());
    if(!map.has(key))map.set(key,{key,code,name,qty:0,total:0,stores:new Set(),dates:new Set(),count:0});
    const a=map.get(key);a.qty+=side==='didox'?Number(x.qty)||0:Number(x.qty)||0;
-   a.total+=side==='didox'?Number(x.total)||0:Number(x.amountUzs??x.amount??((Number(x.qty)||0)*(Number(x.price)||0)))||0;
+   a.total+=side==='didox'?Number(x.total)||0:(Number(x.qty)||0)*(Number(x.price)||0);
    if(side==='upr'){if(x.store)a.stores.add(String(x.store));const dt=uprDateISO(x.date);if(dt)a.dates.add(dt)}
    a.count++;
   }
@@ -997,7 +997,7 @@ function ehfUprCompare(d){
    if(potential.length){
     const chosen=[];
     for(const e of expected){
-     const matches=potential.filter(r=>uprCode(r)===e.code&&Math.abs((Number(r.qty)||0)-e.qty)<0.000001&&Math.abs(Number(r.amountUzs??r.amount??((Number(r.qty)||0)*(Number(r.price)||0)))-e.total)<=0.01);
+     const matches=potential.filter(r=>uprCode(r)===e.code&&Math.abs((Number(r.qty)||0)-e.qty)<0.000001&&Math.abs((Number(r.qty)||0)*(Number(r.price)||0)-e.total)<=0.01);
      if(matches.length===1)chosen.push(matches[0]);
     }
     if(chosen.length){candidates=[...new Set(chosen)];warnings.push('kirimning faktura raqami yoki sanasini tekshirish');}
@@ -1440,36 +1440,8 @@ function bindDidox(){
  dxDraw();
 }
 
-function parseCSV(line){let out=[],cur='',q=false;for(let i=0;i<line.length;i++){let c=line[i];if(c==='"'&&line[i+1]==='"'&&q){cur+='"';i++}else if(c==='"')q=!q;else if(c===','&&!q){out.push(cur);cur=''}else cur+=c}out.push(cur);return out}function uprExcelNum(v){let t=String(v??'').replace(/[\s\u00a0]/g,'').replace(/[^\d.,-]/g,'');if(t.includes(',')&&t.includes('.'))t=t.lastIndexOf(',')>t.lastIndexOf('.')?t.replace(/\./g,'').replace(',','.'):t.replace(/,/g,'');else t=t.replace(',','.');return t?Number(t):NaN}
-async function importUprExcel(e){
- const file=e.target.files?.[0];if(!file)return;const status=document.getElementById('uprStatus');
- try{
-  if(typeof XLSX==='undefined')throw Error('Excel kutubxonasi yuklanmadi');
-  const wb=XLSX.read(await file.arrayBuffer(),{type:'array'}),matrix=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:'',raw:false});
-  const norm=v=>String(v??'').trim().toLowerCase().replace(/[’‘ʻ']/g,'').replace(/\s+/g,' ');
-  const names={store:['Do‘kon nomi','Do‘kon','Filial','store','Ташкилот','Филиал'],tovarId:['Tovar ID','tovar_id','Товар ИД','Товар ID'],variantCode:['Variant kodi','variant_code','tovar_kodi','sku','Товар коди'],supplier:['Ta’minotchi nomi','Taminotchi','Ta’minotchi','supplier','Таъминотчи','Поставщик'],product:['Tovar nomi','Tovar Variant nomi','product','Товар номи','Наименование товара'],qty:['Soni','Miqdor','qty','Сони','Количество'],price:['Narxi','Kirim narxi','price','Нарх','Цена'],date:['Kirim sanasi','Sana','date','Амалиёт санаси','Дата'],rate:['Valyuta kursi','Valuta kursi','Валюта курс','Валюта курси','Курс валюты','Курс'],currency:['Valyuta turi','Валюта тури','Валюта','Валюта тур'],amount:['Qiymat','Қиймат','Киймат','Сумма','Jami qiymat','Umumiy qiymat'],supplierId:['Таъмиинотчи ИД','Таъминотчи ИД','Ta’minotchi ID','supplierId'],invoiceNo:['Faktura raqami','Faktura №','Faktura nomeri','Hisob-faktura raqami','EHF raqami','Счет-фактура №','Номер счета-фактуры','invoiceNo','docNo','documentNumber','Фактура'],barcode:['Shtrix-kod','Shtrix kod','Shtrix_code','shtrix_code','barcode','GTIN','Штрих-код','Штрих код']};
-  const required=['store','tovarId','variantCode','product','qty','price'];
-  const hi=matrix.findIndex(row=>required.every(k=>row.some(c=>names[k].some(n=>norm(n)===norm(c)))));
-  if(hi<0)throw Error('Excel sarlavhalari topilmadi.');
-  const head=matrix[hi],cols={};for(const [k,aliases] of Object.entries(names))cols[k]=head.findIndex(c=>aliases.some(n=>norm(n)===norm(c)));
-  const get=(row,k)=>cols[k]<0?'':String(row[cols[k]]??'').trim();
-  const valid=[];let bad=0;
-  for(const row of matrix.slice(hi+1)){
-   if(row.every(v=>String(v??'').trim()===''))continue;
-   const qty=uprExcelNum(get(row,'qty')),rawPrice=uprExcelNum(get(row,'price')),rateText=get(row,'rate'),rate=rateText?uprExcelNum(rateText):1;
-   const currency=get(row,'currency'),amountText=get(row,'amount'),rawAmount=amountText?uprExcelNum(amountText):qty*rawPrice;
-   if(!get(row,'store')||!get(row,'tovarId')||!get(row,'product')||![qty,rawPrice,rate,rawAmount].every(Number.isFinite)||rate<=0){bad++;continue}
-   const isForeign=/доллар|dollar|usd|евро|eur|руб|rub/i.test(currency);
-   const price=isForeign?rawPrice*rate:rawPrice,amount=isForeign?rawAmount*rate:rawAmount;
-   valid.push({store:get(row,'store'),tovarId:get(row,'tovarId'),variantCode:get(row,'variantCode'),supplier:get(row,'supplier'),supplierId:get(row,'supplierId'),invoiceNo:get(row,'invoiceNo'),barcode:get(row,'barcode').replace(/\D/g,''),product:get(row,'product'),qty,price,date:get(row,'date'),currency,currencyRate:rate,originalPrice:rawPrice,originalAmount:rawAmount,amount,amountUzs:amount,priceUzs:price});
-  }
-  if(!valid.length)throw Error('Yaroqli qator yo‘q: '+bad);
-  const old=records[3]||[];records[3]=old.concat(valid);
-  try{await uprStore(records[3]);save()}catch(err){records[3]=old;throw Error('Excel saqlanmadi: '+err.message)}
-  status.textContent=valid.length+' ta yuklandi · '+bad+' ta xato qator · valyuta va kurs hisoblandi';
-  uprReceiptIndex=null;rcCompareCache=new WeakMap();rcCacheSignature='';drawRows();drawUprSuppliers();
- }catch(err){status.textContent='Xatolik: '+err.message}finally{e.target.value=''}
-}
+function parseCSV(line){let out=[],cur='',q=false;for(let i=0;i<line.length;i++){let c=line[i];if(c==='"'&&line[i+1]==='"'&&q){cur+='"';i++}else if(c==='"')q=!q;else if(c===','&&!q){out.push(cur);cur=''}else cur+=c}out.push(cur);return out}async function importUprExcel(e){const f=e.target.files?.[0];if(!f)return;let status=document.getElementById('uprStatus');try{if(typeof XLSX==='undefined')throw Error('Excel kutubxonasi yuklanmadi');let wb=XLSX.read(await f.arrayBuffer(),{type:'array'}),matrix=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:'',raw:false}),groups=[['Do‘kon nomi','Do‘kon','Filial','store','Ташкилот'],['Tovar ID','tovar_id','Товар ИД'],['Variant kodi','variant_code','tovar_kodi','sku','Товар коди'],['Ta’minotchi nomi','Taminotchi','Ta’minotchi','supplier','Таъминотчи'],['Tovar nomi','Tovar Variant nomi','product','Товар номи'],['Soni','Miqdor','qty','Сони'],['Narxi','Kirim narxi','price','Нарх'],['Kirim sanasi','Sana','date','Амалиёт санаси']],norm=x=>String(x??'').trim().toLowerCase().replace(/[’‘ʻ']/g,'').replace(/\s+/g,' '),hi=matrix.findIndex(row=>groups.every(g=>row.some(c=>g.some(n=>norm(n)===norm(c)))));if(hi<0)throw Error('Excel sarlavhalari aniqlanmadi. Faylning yuqori qatorlaridagi ustun nomlarini tekshiring.');let idx=groups.map(g=>matrix[hi].findIndex(c=>g.some(n=>norm(n)===norm(c)))),supplierIdCol=matrix[hi].findIndex(c=>['Таъмиинотчи ИД','Таъминотчи ИД','Ta’minotchi ID','supplierId'].some(n=>norm(n)===norm(c))),invoiceCol=matrix[hi].findIndex(c=>['Faktura raqami','Faktura №','Faktura nomeri','Hisob-faktura raqami','EHF raqami','Счет-фактура №','Номер счета-фактуры','invoiceNo','docNo','documentNumber'].some(n=>norm(n)===norm(c))),barcodeCol=matrix[hi].findIndex(c=>['Shtrix-kod','Shtrix kod','Shtrix_code','shtrix_code','barcode','GTIN','Штрих-код','Штрих код'].some(n=>norm(n)===norm(c))),valid=[],bad=0;for(let row of matrix.slice(hi+1)){if(row.every(v=>String(v??'').trim()===''))continue;let v=idx.map(i=>String(row[i]??'').trim()),qty=Number(v[5].replace(/\s/g,'').replace(',','.')),price=Number(v[6].replace(/\s/g,'').replace(',','.'));if(!v[0]||!v[1]||!v[3]||!v[4]||!v[5]||!v[6]||!Number.isFinite(qty)||!Number.isFinite(price)){bad++;continue}valid.push({store:v[0],tovarId:v[1],variantCode:v[2],supplier:v[3],supplierId:supplierIdCol>=0?String(row[supplierIdCol]??'').trim():'',invoiceNo:invoiceCol>=0?String(row[invoiceCol]??'').trim():'',barcode:barcodeCol>=0?String(row[barcodeCol]??'').trim().replace(/\D/g,''):'',product:v[4],qty,price,date:v[7]})}if(!valid.length)throw Error('Yaroqli qator yo‘q: '+bad);let old=records[3]||[];records[3]=old.concat(valid);try{await uprStore(records[3]);save()}catch(err){records[3]=old;throw Error('Excel saqlanmadi: '+err.message)}status.textContent=valid.length+' ta yuklandi, '+bad+' ta xato qator o‘tkazildi';drawRows();drawUprSuppliers();rcCompareCache=new WeakMap();rcCacheSignature='';}catch(err){status.textContent='Xatolik: '+err.message}finally{e.target.value=''}}
+
 let uprSupplierSelection=new Set();
 function uprSupplierNorm(v){return String(v??'').trim().toLocaleLowerCase().replace(/\s+/g,' ')}
 // K/M bilan alohida prefiks sifatida boshlangan texnik nomlar ro‘yxatda yashiriladi.
@@ -1615,7 +1587,7 @@ function exportUprMissing(allRecords=false){
  if(f.from||f.to){const d=uprDateISO(x.date);if(!d||(f.from&&d<f.from)||(f.to&&d>f.to))return false}
  return true;
  });
- const data=[['Do‘kon nomi','Tovar ID','Variant kodi','Ta’minotchi nomi','Tovar nomi','Soni','Valyuta','Kurs','Narxi (valyuta)','Qiymati (valyuta)','Narxi (so‘m)','Qiymati (so‘m)','Kirim sanasi','Shtrix-kod'],...rows.map(x=>[x.store,x.tovarId,x.variantCode,x.supplier,x.product,x.qty,x.price,x.date,''])];
+ const data=[['Do‘kon nomi','Tovar ID','Variant kodi','Ta’minotchi nomi','Tovar nomi','Soni','Narxi','Kirim sanasi','Shtrix-kod'],...rows.map(x=>[x.store,x.tovarId,x.variantCode,x.supplier,x.product,x.qty,x.price,x.date,''])];
  downloadData('UPR_shtrix_kodi_yoq_kirimlar.csv','\uFEFF'+data.map(r=>r.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n'),'text/csv;charset=utf-8');
 }
 
@@ -1657,8 +1629,8 @@ function drawRows(){
   if(f.from||f.to){const d=uprDateISO(x.date);if(!d||(f.from&&d<f.from)||(f.to&&d>f.to))return false}
   return true;
  });
- const sum=arr.reduce((total,x)=>total+(Number(x.amountUzs??x.amount??((Number(x.qty)||0)*(Number(x.price)||0)))||0),0);
- document.getElementById('rows').innerHTML='<p>Jami: <b>'+all.length+'</b> · Filtr bo‘yicha: <b>'+arr.length+'</b> · Kirim qiymati: <b>'+sum.toLocaleString('uz-UZ')+'</b></p><div style="overflow:auto"><table><thead><tr>'+['Do‘kon nomi','Tovar ID','Variant kodi','Ta’minotchi nomi','Tovar nomi','Soni','Narxi','Kirim sanasi','Shtrix-kod'].map(v=>'<th>'+v+'</th>').join('')+'</tr></thead><tbody>'+arr.slice(0,300).map((x,i)=>'<tr>'+[x.store,x.tovarId,x.variantCode,x.supplier,x.product,x.qty,x.currency||'So‘m',x.currencyRate||1,x.originalPrice??x.price,x.originalAmount??((Number(x.qty)||0)*(Number(x.price)||0)),x.price,x.amountUzs??((Number(x.qty)||0)*(Number(x.price)||0)),x.date].map(v=>'<td>'+esc(v)+'</td>').join('')+'<td><span>'+esc(barcodeDisplay(x))+'</span>'+(!/^\d{13}$/.test(String(barcodeDisplay(x)).trim())?' <button type="button" class="secondary" data-upr-barcode="'+i+'" title="Shtrix-kod biriktirish" style="display:inline-flex;align-items:center;justify-content:center;margin-left:8px;padding:4px 8px;vertical-align:middle">✎</button>':'')+'</td></tr>').join('')+'</tbody></table></div>';
+ const sum=arr.reduce((total,x)=>total+(Number(x.qty)||0)*(Number(x.price)||0),0);
+ document.getElementById('rows').innerHTML='<p>Jami: <b>'+all.length+'</b> · Filtr bo‘yicha: <b>'+arr.length+'</b> · Kirim qiymati: <b>'+sum.toLocaleString('uz-UZ')+'</b></p><div style="overflow:auto"><table><thead><tr>'+['Do‘kon nomi','Tovar ID','Variant kodi','Ta’minotchi nomi','Tovar nomi','Soni','Narxi','Kirim sanasi','Shtrix-kod'].map(v=>'<th>'+v+'</th>').join('')+'</tr></thead><tbody>'+arr.slice(0,300).map((x,i)=>'<tr>'+[x.store,x.tovarId,x.variantCode,x.supplier,x.product,x.qty,x.price,x.date].map(v=>'<td>'+esc(v)+'</td>').join('')+'<td><span>'+esc(barcodeDisplay(x))+'</span>'+(!/^\d{13}$/.test(String(barcodeDisplay(x)).trim())?' <button type="button" class="secondary" data-upr-barcode="'+i+'" title="Shtrix-kod biriktirish" style="display:inline-flex;align-items:center;justify-content:center;margin-left:8px;padding:4px 8px;vertical-align:middle">✎</button>':'')+'</td></tr>').join('')+'</tbody></table></div>';
  document.querySelectorAll('#rows [data-upr-barcode]').forEach(btn=>btn.onclick=()=>{
   const row=arr[Number(btn.dataset.uprBarcode)];
   if(!row||document.querySelector('.upr-barcode-overlay'))return;
