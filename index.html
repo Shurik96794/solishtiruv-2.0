@@ -844,11 +844,12 @@ function uprBarcodeIdIndex(){
  return index;
 }
 function uprResolvedBarcode(x){
+ const byPc=[...(barcodeIndex.get(barcodeKey(x?.variantCode))||[])].map(v=>String(v).trim()).filter(v=>/^\d{13}$/.test(v));
+ if(byPc.length===1)return byPc[0];
+ if(byPc.length>1)return '';
  const direct=[x?.barcode,x?.shtrixCode,x?.shtrix_code,x?.shtrix,x?.bar,x?.gtin]
   .map(v=>String(v??'').trim()).find(v=>/^\d{13}$/.test(v));
  if(direct)return direct;
- const byPc=[...(barcodeIndex.get(barcodeKey(x?.variantCode))||[])].map(v=>String(v).trim()).filter(v=>/^\d{13}$/.test(v));
- if(byPc.length===1)return byPc[0];
  const id=String(x?.tovarId??'').trim();
  if(id){
   const byId=[...(uprBarcodeIdIndex().get(id)||[])];
@@ -1531,7 +1532,14 @@ function barcodeKey(v){return String(v??'').normalize('NFKC').toUpperCase().repl
 function barcodeNameIndex(){const byPc=new Map(),byId=new Map();for(const x of records[3]||[]){const pc=barcodeKey(x.variantCode),id=String(x.tovarId??'').trim(),name=String(x.product??'').trim();if(!name)continue;if(pc){if(!byPc.has(pc))byPc.set(pc,new Set());byPc.get(pc).add(name)}if(id){if(!byId.has(id))byId.set(id,new Set());byId.get(id).add(name)}}const unique=values=>values&&values.size===1?[...values][0]:'';return {byPc,byId,unique}}
 function rebuildBarcodeIndex(){barcodeIndex=new Map();for(const row of barcodeRows){const k=barcodeKey(row.pc);if(!k)continue;if(!barcodeIndex.has(k))barcodeIndex.set(k,new Set());if(row.barcode)barcodeIndex.get(k).add(String(row.barcode))}}
 function barcodeMatch(pc){const codes=barcodeIndex.get(barcodeKey(pc));if(!codes||!codes.size)return {status:'missing',barcode:''};if(codes.size>1)return {status:'conflict',barcode:''};return {status:'linked',barcode:[...codes][0]}}
-function barcodeDisplay(row){const direct=String(row?.barcode??'').trim();if(/^\d{13}$/.test(direct))return direct;const m=barcodeMatch(row.variantCode);return m.status==='linked'?m.barcode:m.status==='conflict'?'Tekshirish kerak':'—'}
+function barcodeDisplay(row){
+ const m=barcodeMatch(row?.variantCode);
+ // PC kod bo‘yicha qo‘lda saqlangan shtrix-kod ustuvor; eski import qiymati uni bosib ketmaydi.
+ if(m.status==='linked')return m.barcode;
+ if(m.status==='conflict')return 'Tekshirish kerak';
+ const direct=String(row?.barcode??'').trim();
+ return /^\d{13}$/.test(direct)?direct:'—';
+}
 function barcodePage(){return '<div class="panel"><div class="toolbar"><label class="supplier-upload-button" for="barcodeExcel">▤ Excel yuklash</label><input type="file" id="barcodeExcel" accept=".xlsx,.xls,.csv" class="supplier-visually-hidden"><button type="button" class="secondary" id="barcodeExport">Excel eksport (CSV)</button></div><div id="barcodeStatus" class="muted">Excel ustunlari: tovar_id, tovar_kodi, sku, shtrix_code</div><div id="barcodeStats" class="barcode-stats"></div><div class="toolbar"><input id="barcodeSearch" placeholder="PC kod, tovar nomi, SKU yoki shtrix-kod..." style="flex:1;min-width:220px"><select id="barcodeFilter"><option value="all">Barchasi</option><option value="linked">Bog‘langan</option><option value="missing">Shtrix-kodi yo‘q</option><option value="conflict">Tekshirish</option></select><button type="button" class="secondary" id="barcodeMissingExport">↓ Shtrix-kodi yo‘qlar (CSV)</button><button type="button" class="secondary" id="barcodeShowAll" title="Barcha tovar nomlarini ko‘rsatish yoki yashirish">👁 Hammasini ko‘rish</button></div><div id="barcodeTable"></div></div>'}
 function bindBarcodes(){document.getElementById('barcodeExcel').onchange=importBarcodes;document.getElementById('barcodeExport').onclick=exportBarcodes;document.getElementById('barcodeMissingExport').onclick=exportBarcodeMissing;document.getElementById('barcodeSearch').oninput=e=>{barcodeQuery=e.target.value;drawBarcodeTable()};document.getElementById('barcodeFilter').onchange=e=>{barcodeFilter=e.target.value;drawBarcodeTable()};document.getElementById('barcodeShowAll').onclick=()=>{barcodeShowAllNames=!barcodeShowAllNames;drawBarcodeTable()};document.getElementById('barcodeSearch').value=barcodeQuery;document.getElementById('barcodeFilter').value=barcodeFilter;drawBarcodeTable()}
 function barcodeViewRows(){const names=barcodeNameIndex(),keys=new Set([...barcodeIndex.keys(),...(records[3]||[]).map(x=>barcodeKey(x.variantCode)).filter(Boolean)]),first=new Map();for(const x of barcodeRows){const k=barcodeKey(x.pc);if(!first.has(k))first.set(k,x)}return [...keys].map(k=>{const r=first.get(k)||{},m=barcodeMatch(k);return {pc:r.pc||k,name:names.unique(names.byPc.get(k))||names.unique(names.byId.get(String(r.tovarId??'').trim()))||'—',sku:r.sku||'',barcode:m.barcode,status:m.status,codes:[...(barcodeIndex.get(k)||[])],tovarId:r.tovarId||''}})}
@@ -1596,11 +1604,13 @@ async function uprAssignBarcode(row,code){
  const key=barcodeKey(pc),existing=barcodeRows.filter(x=>barcodeKey(x.pc)===key);
  if(existing.some(x=>x.barcode&&x.barcode!==code)&&!confirm('Bu PC variantda boshqa shtrix-kod bor. Almashtirilsinmi?'))return false;
  const old=barcodeRows;
- barcodeRows=[...old.filter(x=>barcodeKey(x.pc)!==key),{tovarId:String(row.tovarId||''),pc,sku:existing[0]?.sku||'',barcode:code,manual:true}];
+ barcodeRows=[...old.filter(x=>barcodeKey(x.pc)!==key),{tovarId:String(row.tovarId||existing[0]?.tovarId||''),pc,sku:existing.find(x=>x.sku)?.sku||String(row.sku||''),barcode:code,manual:true}];
  rebuildBarcodeIndex();
  try{
   await barcodeStore(barcodeRows);
   rcCompareCache=new WeakMap();rcCacheSignature='';
+  dxMatchCache=new WeakMap();dxMatchStamp='';
+  uprBarcodeIdCache=null;uprReceiptIndex=null;
   drawRows();
   if(document.getElementById('barcodeTable'))drawBarcodeTable();
   return true;
