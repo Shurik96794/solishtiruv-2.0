@@ -1338,6 +1338,27 @@ function exportBarcodes(){const rows=[['tovar_id','tovar_kodi','sku','shtrix_cod
 async function barcodeStore(rows){const db=await uprDb();if(!db.objectStoreNames.contains('barcodes')){db.close();throw Error('Ma’lumotlar bazasida barcodes bo‘limi yo‘q')}return new Promise((resolve,reject)=>{const tx=db.transaction('barcodes','readwrite');tx.objectStore('barcodes').put(rows,'all');tx.oncomplete=()=>{db.close();resolve()};tx.onerror=()=>{db.close();reject(tx.error)}})}
 async function barcodeLoad(){try{const db=await uprDb();const rows=await new Promise((resolve,reject)=>{const tx=db.transaction('barcodes','readonly'),req=tx.objectStore('barcodes').get('all');req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error)});db.close();barcodeRows=Array.isArray(rows)?rows:[];rebuildBarcodeIndex();if(active===8)drawBarcodeTable();if(active===3)drawRows()}catch(err){console.error('Shtrix-kodlar bazasini o‘qish xatosi',err)}}
 
+async function uprAssignBarcode(row){
+ if(!row)return;
+ const pc=String(row.variantCode||'').trim();
+ if(!pc){alert('Mahsulotda variant kodi (PC) mavjud emas.');return}
+ const current=barcodeDisplay(row),value=prompt('UPR mahsulotiga shtrix-kod biriktirish\\nMahsulot: '+String(row.product||'')+'\\nVariant kodi: '+pc+'\\n13 xonali shtrix-kodni kiriting:',/^\\d{13}$/.test(current)?current:'');
+ if(value===null)return;
+ const code=String(value).trim();
+ if(!/^\\d{13}$/.test(code)){alert('Shtrix-kod aniq 13 ta raqamdan iborat bo‘lishi kerak.');return}
+ const key=barcodeKey(pc),existing=barcodeRows.filter(x=>barcodeKey(x.pc)===key);
+ if(existing.some(x=>x.barcode&&x.barcode!==code)&&!confirm('Bu variant kodida boshqa shtrix-kod mavjud. Almashtirilsinmi?'))return;
+ const old=barcodeRows;
+ barcodeRows=[...old.filter(x=>barcodeKey(x.pc)!==key),{tovarId:String(row.tovarId||''),pc,sku:existing[0]?.sku||'',barcode:code,manual:true}];
+ rebuildBarcodeIndex();
+ try{
+  await barcodeStore(barcodeRows);
+  rcCompareCache=new WeakMap();rcCacheSignature='';
+  drawRows();
+  if(document.getElementById('barcodeTable'))drawBarcodeTable();
+  alert('Shtrix-kod saqlandi. SHTRIX KOD bo‘limida ham shu PC variantga biriktirildi.');
+ }catch(err){barcodeRows=old;rebuildBarcodeIndex();alert('Saqlashda xato: '+err.message)}
+}
 function drawRows(){
  const all=records[3]||[],q=(document.getElementById('uprSearch')?.value||'').trim().toLocaleLowerCase(),f=uprAppliedFilters;
  const store=f.store.toLocaleLowerCase(),supplier=f.supplier.toLocaleLowerCase();
@@ -1350,7 +1371,8 @@ function drawRows(){
   return true;
  });
  const sum=arr.reduce((total,x)=>total+(Number(x.qty)||0)*(Number(x.price)||0),0);
- document.getElementById('rows').innerHTML='<p>Jami: <b>'+all.length+'</b> · Filtr bo‘yicha: <b>'+arr.length+'</b> · Kirim qiymati: <b>'+sum.toLocaleString('uz-UZ')+'</b></p><div style="overflow:auto"><table><thead><tr>'+['Do‘kon nomi','Tovar ID','Variant kodi','Ta’minotchi nomi','Tovar nomi','Soni','Narxi','Kirim sanasi','Shtrix-kod'].map(v=>'<th>'+v+'</th>').join('')+'</tr></thead><tbody>'+arr.slice(0,300).map(x=>'<tr>'+[x.store,x.tovarId,x.variantCode,x.supplier,x.product,x.qty,x.price,x.date,barcodeDisplay(x)].map(v=>'<td>'+esc(v)+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>';
+ document.getElementById('rows').innerHTML='<p>Jami: <b>'+all.length+'</b> · Filtr bo‘yicha: <b>'+arr.length+'</b> · Kirim qiymati: <b>'+sum.toLocaleString('uz-UZ')+'</b></p><div style="overflow:auto"><table><thead><tr>'+['Do‘kon nomi','Tovar ID','Variant kodi','Ta’minotchi nomi','Tovar nomi','Soni','Narxi','Kirim sanasi','Shtrix-kod'].map(v=>'<th>'+v+'</th>').join('')+'</tr></thead><tbody>'+arr.slice(0,300).map((x,i)=>'<tr>'+[x.store,x.tovarId,x.variantCode,x.supplier,x.product,x.qty,x.price,x.date].map(v=>'<td>'+esc(v)+'</td>').join('')+'<td>'+esc(barcodeDisplay(x))+' <button type="button" class="secondary" data-upr-barcode="'+i+'" title="UPR va SHTRIX KOD bazasiga biriktirish">✎</button></td></tr>').join('')+'</tbody></table></div>';
+ document.querySelectorAll('#rows [data-upr-barcode]').forEach(btn=>btn.onclick=()=>uprAssignBarcode(arr[Number(btn.dataset.uprBarcode)]));
  const labels=[['uprDateLabel',f.from||f.to?[f.from||'…',f.to||'…'].join(' — '):'Barcha davr'],['uprStoreLabel',f.stores?.length?f.stores.length+' ta do‘kon':f.store||'Barcha do‘konlar'],['uprSupplierFilterLabel',f.supplier||'Barcha ta’minotchilar']];
  for(const [id,label] of labels){const el=document.getElementById(id);if(el){el.textContent=label;el.title=label}}
  uprRefreshFilterOptions();
