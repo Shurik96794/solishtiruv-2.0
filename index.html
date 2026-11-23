@@ -1617,6 +1617,22 @@ async function uprAssignBarcode(row,code){
  }catch(err){barcodeRows=old;rebuildBarcodeIndex();alert('Saqlashda xato: '+err.message);return false}
 }
 
+function uprGeneratedBarcode(row){
+ const id=String(row?.tovarId??'').trim();
+ // 7 raqamli ichki prefiks + 6 raqamli Tovar ID = 13 raqam.
+ if(!/^\\d{6}$/.test(id))return '';
+ return '1000000'+id;
+}
+function uprGeneratedBarcodeError(row,code){
+ if(!code)return 'Tovar ID aynan 6 raqam bo‘lishi kerak.';
+ const pc=barcodeKey(row.variantCode);
+ const sameId=(records[3]||[]).some(x=>String(x.tovarId??'').trim()===String(row.tovarId??'').trim()&&barcodeKey(x.variantCode)!==pc);
+ if(sameId)return 'Bu Tovar ID bir nechta PC variantga tegishli. Avtomatik biriktirish xavfli.';
+ const used=barcodeRows.some(x=>String(x.barcode??'')===code&&barcodeKey(x.pc)!==pc)
+  ||(records[3]||[]).some(x=>String(x.barcode??'')===code&&barcodeKey(x.variantCode)!==pc);
+ if(used)return 'Bu shtrix-kod boshqa PC variantga biriktirilgan.';
+ return '';
+}
 function drawRows(){
  const all=records[3]||[],q=(document.getElementById('uprSearch')?.value||'').trim().toLocaleLowerCase(),f=uprAppliedFilters;
  const store=f.store.toLocaleLowerCase(),supplier=f.supplier.toLocaleLowerCase();
@@ -1640,6 +1656,9 @@ function drawRows(){
   overlay.innerHTML='<section class="upr-barcode-dialog" role="dialog" aria-modal="true" aria-labelledby="uprBarcodeTitle"><h3 id="uprBarcodeTitle">▥ Shtrix-kod biriktirish</h3><div class="upr-info"><strong>Mahsulot:</strong> '+esc(row.product||'—')+'<br><strong>Variant kodi:</strong> '+esc(row.variantCode||'—')+'<br><strong>Do‘kon:</strong> '+esc(row.store||'—')+'</div><label for="uprBarcodeInput"><strong>13 raqamli shtrix-kod</strong></label><input id="uprBarcodeInput" type="text" inputmode="numeric" maxlength="13" autocomplete="off" placeholder="Masalan: 4780119694722"><div class="muted" style="font-size:12px">Saqlanganda SHTRIX KOD bo‘limiga ham biriktiriladi.</div><p id="uprBarcodeError" style="color:#c0392b;min-height:18px;margin:8px 0 0" aria-live="polite"></p><div class="upr-actions"><button type="button" class="upr-close" data-cancel>Bekor qilish</button><button type="button" class="upr-primary" data-save>✓ Saqlash</button></div></section>';
   document.body.appendChild(overlay);
   const input=overlay.querySelector('input'),saveBtn=overlay.querySelector('[data-save]'),cancelBtn=overlay.querySelector('[data-cancel]'),error=overlay.querySelector('#uprBarcodeError');
+  const generated=uprGeneratedBarcode(row),generationError=uprGeneratedBarcodeError(row,generated);
+  if(generated&&!generationError){input.value=generated;error.textContent='Tovar ID asosida taklif qilindi: '+generated+'. Saqlashni bosing.';error.style.color='#147d48'}
+  else if(generationError){error.textContent=generationError+' Shtrix-kodni qo‘lda kiritishingiz mumkin.'}
   const previous=document.activeElement;
   const close=()=>{document.removeEventListener('keydown',keyHandler);overlay.remove();if(previous?.isConnected)previous.focus()};
   const keyHandler=e=>{if(e.key==='Escape'){e.preventDefault();close()}if(e.key==='Tab'){const first=input,last=saveBtn;if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}}};
@@ -1649,6 +1668,7 @@ function drawRows(){
   saveBtn.onclick=async()=>{
    const code=input.value.trim();
    if(!/^\d{13}$/.test(code)){error.textContent='Shtrix-kod 13 ta raqamdan iborat bo‘lishi kerak.';input.focus();return}
+   if(code===generated&&generationError){error.textContent=generationError;input.focus();return}
    saveBtn.disabled=true;saveBtn.textContent='Saqlanmoqda…';error.textContent='';
    const ok=await uprAssignBarcode(row,code);
    if(ok)close();else{saveBtn.disabled=false;saveBtn.textContent='✓ Saqlash';error.textContent='Saqlash bajarilmadi. Qayta urinib ko‘ring.'}
