@@ -1399,7 +1399,7 @@ function drawRows(){
   cancelBtn.onclick=close;
   saveBtn.onclick=async()=>{
    const code=input.value.trim();
-   if(!/^\\d{13}$/.test(code)){error.textContent='Shtrix-kod 13 ta raqamdan iborat bo‘lishi kerak.';input.focus();return}
+   if(!/^\d{13}$/.test(code)){error.textContent='Shtrix-kod 13 ta raqamdan iborat bo‘lishi kerak.';input.focus();return}
    saveBtn.disabled=true;saveBtn.textContent='Saqlanmoqda…';error.textContent='';
    const ok=await uprAssignBarcode(row,code);
    if(ok)close();else{saveBtn.disabled=false;saveBtn.textContent='✓ Saqlash';error.textContent='Saqlash bajarilmadi. Qayta urinib ko‘ring.'}
