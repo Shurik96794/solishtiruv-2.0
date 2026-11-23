@@ -252,16 +252,26 @@ function didoxBarcodeCatalog(){
  return didoxBarcodeCache.catalog;
 }
 function didoxBarcodeNameIndex(){didoxBarcodeCatalog();return didoxBarcodeCache.byName}
+// Yagona ketma-ketlik: Didox asl kod → Soliq MXIK → nomenklatura mosligi.
+// MXIKda bir nechta kod bo‘lsa taxminiy tanlov qilinmaydi.
+function didoxBarcodeStages(l){
+ const original=String(l.bar||l.barcode||'').trim();
+ if(tasnifBarcode13(original))return {code:original,source:'Didox'};
+ const mxik=String(l.mxik||'').trim(),name=String(l.nm||'').trim();
+ const soliq=tasnifSoliqValidCodes(mxik);
+ if(soliq.length===1)return {code:soliq[0],source:'Soliq MXIK'};
+ if(soliq.length>1)return {code:'',source:'Soliq MXIK: bir nechta kod, tekshirish kerak',ambiguous:true};
+ const saved=tasnifMatches[JSON.stringify([name,mxik,original])]||tasnifMatches[JSON.stringify([name,mxik,''])];
+ const code=typeof saved==='string'?saved:String(saved?.barcode||'').trim();
+ if(tasnifBarcode13(code))return {code,source:'Nomenklatura mosligi'};
+ return {code:'',source:'Nomenklatura solishtirish kerak'};
+}
 function didoxLinkedBarcode(l){
- const original=String(l.bar||'').trim();
- if(tasnifBarcode13(original))return original;
- const name=String(l.nm||'').trim(),mxik=String(l.mxik||'').trim();
+ const stage=didoxBarcodeStages(l);
+ if(stage.code||stage.ambiguous)return stage.code;
+ const original=String(l.bar||l.barcode||'').trim(),name=String(l.nm||'').trim(),mxik=String(l.mxik||'').trim();
  const saved=tasnifMatches[JSON.stringify([name,mxik,original])]||tasnifMatches[JSON.stringify([name,mxik,''])];
  const savedCode=typeof saved==='string'?saved:String(saved?.barcode||'').trim();
- if(typeof saved==='object'&&saved?.manual&&tasnifBarcode13(savedCode))return savedCode;
- const soliq=tasnifSoliqValidCodes(mxik);
- if(soliq.length===1)return soliq[0];
- if(soliq.length>1)return '';
  const catalog=didoxBarcodeCatalog();
  const byName=didoxBarcodeNameIndex();
  const mapped=ehfMappings[[String(l._supplierInn||''),mxik,ehfNormalize(name)].join('|')];
@@ -1111,20 +1121,7 @@ function dxInvoiceDialog(d){
  // Avval saqlangan va qo‘lda biriktirilgan kodlarni tez ko‘rsatamiz.
  // Og‘ir avtomatik nom qidiruvi asosiy faktura oynasini bloklamaydi.
  const lines=d.lines||[];
- const quickCode=l=>{
-  const raw=String(l.bar||l.barcode||'').trim();
-  if(tasnifBarcode13(raw))return raw;
-  const name=String(l.nm||'').trim(),mxik=String(l.mxik||'').trim();
-  const saved=tasnifMatches[JSON.stringify([name,mxik,raw])]||tasnifMatches[JSON.stringify([name,mxik,''])];
-  const code=typeof saved==='string'?saved:String(saved?.barcode||'').trim();
-  if(tasnifBarcode13(code))return code;
-  const mapped=ehfMappings[[String(d.s_inn||''),mxik,ehfNormalize(name)].join('|')];
-  if(mapped){
-   const codes=new Set((barcodeRows||[]).filter(x=>String(x.pc||'')===String(mapped.pc||'')&&tasnifBarcode13(x.barcode)).map(x=>String(x.barcode)));
-   if(codes.size===1)return [...codes][0];
-  }
-  return '';
- };
+ const quickCode=l=>didoxBarcodeStages({...l,_supplierInn:d.s_inn}).code;
  lines.forEach((l,i)=>{
   const cell=dlg.querySelector('[data-dx-barcode="'+i+'"]');
   if(!cell)return;
@@ -1132,7 +1129,7 @@ function dxInvoiceDialog(d){
  });
  const toolbar=document.createElement('div');
  toolbar.style.cssText='display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0';
- toolbar.innerHTML='<button type="button" class="secondary" data-dx-resolve>↻ Qolgan shtrix-kodlarni aniqlash</button><span data-dx-progress class="muted" aria-live="polite">Saqlangan kodlar ko‘rsatildi. Chiziq (—) — kod topilmadi.</span>';
+ toolbar.innerHTML='<button type="button" class="secondary" data-dx-resolve>↻ Qolgan shtrix-kodlarni aniqlash</button><span data-dx-progress class="muted" aria-live="polite">Didox → Soliq MXIK → Nomenklatura mosligi tekshirildi. Chiziq (—) — kod topilmadi.</span>';
  const table=dlg.querySelector('table');
  if(table)table.parentElement.before(toolbar);
  const resolveBtn=toolbar.querySelector('[data-dx-resolve]'),progress=toolbar.querySelector('[data-dx-progress]');
