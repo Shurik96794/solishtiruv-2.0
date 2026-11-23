@@ -1195,11 +1195,13 @@ function dxMatchAutoDraw(groups){
  const signature=[(records[3]||[]).length,(barcodeRows||[]).length,dxDocs.length,supplierEntities().length,suppliers().length,Object.keys(tasnifMatches||{}).length].join(':');
  if(signature!==dxMatchStamp){dxMatchStamp=signature;dxMatchCache=new WeakMap()}
  const jobs=[],totals=new Map();
- groups.forEach((g,gi)=>{totals.set(gi,{matched:0,rows:0,linked:true,done:0,count:g.docs.length});g.docs.forEach((x,j)=>jobs.push({gi,j,d:x.d}))});
+ groups.forEach((g,gi)=>{totals.set(gi,{matched:0,rows:0,linked:true,done:0,count:g.docs.length});g.docs.forEach((x,j)=>jobs.push({gi,j,d:x.d,visible:dxOpenSuppliers.has(g.key)}))});
+ // Ochilgan ta’minotchining fakturalari birinchi hisoblanadi.
+ jobs.sort((a,b)=>Number(b.visible)-Number(a.visible));
  let offset=0;
  const run=()=>{
   if(token!==dxMatchToken||!document.getElementById('dxTable'))return;
-  const end=Math.min(jobs.length,offset+2);
+  const end=Math.min(jobs.length,offset+1);
   for(;offset<end;offset++){
    const job=jobs[offset],t=totals.get(job.gi);
    try{
@@ -1219,9 +1221,9 @@ function dxMatchAutoDraw(groups){
    const state=!t.linked?'unlinked':t.done===t.count&&t.rows>0&&t.matched===t.rows?'matched':'check';
    dxMatchSetCircle(document.querySelector('[data-dx-match="supplier-'+job.gi+'"]'),percent,state,t.done<t.count?'Tekshirilmoqda':state==='matched'?'To‘liq mos':state==='unlinked'?'Bog‘lanmagan':'Tekshirish');
   }
-  if(offset<jobs.length)setTimeout(run,0);
+  if(offset<jobs.length){if(typeof requestIdleCallback==='function')requestIdleCallback(run,{timeout:800});else setTimeout(run,30)}
  };
- setTimeout(run,0);
+ if(typeof requestIdleCallback==='function')requestIdleCallback(run,{timeout:800});else setTimeout(run,30);
 }
 function dxDraw(){
  const root=document.getElementById('dxTable');if(!root)return;
@@ -1237,7 +1239,7 @@ function dxDraw(){
  '<div style="overflow:auto"><table><thead><tr><th>Ko‘rish</th><th>Ta’minotchi</th><th>STIR</th><th>Fakturalar</th><th>Jami summa</th><th>Moslik %</th><th>Holat</th></tr></thead><tbody>'+
  list.map((g,gi)=>'<tr><td><button class="secondary" data-dx-group="'+gi+'" title="Fakturalarni ochish" aria-label="Fakturalarni ochish">'+(dxOpenSuppliers.has(g.key)?'◉':'👁')+'</button></td><td><b>'+esc(g.name)+'</b></td><td>'+esc(g.inn)+'</td><td>'+g.docs.length+' ta</td><td>'+g.sum.toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2})+'</td><td>'+dxMatchCircleHtml('supplier-'+gi)+'</td><td>'+dxGroupBadge(g)+'</td></tr>'+
  (dxOpenSuppliers.has(g.key)?'<tr><td colspan="7" style="padding:10px 16px;background:var(--surface,#f7f9fc)"><div style="overflow:auto"><table><thead><tr><th>Sana</th><th>Faktura №</th><th>Xaridor STIR</th><th>Didox holati</th><th>Tekshirish muddati</th><th>Summa</th><th>Ichki tekshiruv</th><th>Soni %</th><th>Narx %</th><th>Amallar</th></tr></thead><tbody>'+
- g.docs.map((x,di)=>'<tr><td>'+esc(x.d.f_sana||'')+'</td><td>'+esc(x.d.f_no||'')+'</td><td>'+esc(x.d.b_inn||'')+'</td><td>'+dxStatusBadge(x.d)+'</td><td>'+dxDeadlineBadge(x.d,x.i)+'</td><td>'+esc(x.d.jami??'')+'</td><td>'+esc(ehfReviewGet(x.d)?.status||'Belgilanmagan')+'</td><td>'+dxMatchCircleHtml('qty-'+gi+'-'+di,true)+' '+dxMatchCircleHtml('price-'+gi+'-'+di,true)+'</td><td><button class="secondary" data-dx-invoice="'+x.i+'">👁 Ko‘rish</button> <button class="primary" data-dx-compare="'+x.i+'" title="UPR bilan solishtirish" aria-label="UPR bilan solishtirish" style="font-size:19px;padding:8px 12px">🔍</button> <button class="secondary" data-dx-map="'+x.i+'" title="Shtrix-kod biriktirish" aria-label="Shtrix-kod biriktirish" style="font-size:19px;padding:8px 12px">▥</button></td></tr>').join('')+'</tbody></table></div></td></tr>':'')).join('')+'</tbody></table></div>';
+ g.docs.map((x,di)=>'<tr><td>'+esc(x.d.f_sana||'')+'</td><td>'+esc(x.d.f_no||'')+'</td><td>'+esc(x.d.b_inn||'')+'</td><td>'+dxStatusBadge(x.d)+'</td><td>'+dxDeadlineBadge(x.d,x.i)+'</td><td>'+esc(x.d.jami??'')+'</td><td>'+esc(ehfReviewGet(x.d)?.status||'Belgilanmagan')+'</td><td>'+dxMatchCircleHtml('qty-'+gi+'-'+di,true)+'</td><td>'+dxMatchCircleHtml('price-'+gi+'-'+di,true)+'</td><td><button class="secondary" data-dx-invoice="'+x.i+'">👁 Ko‘rish</button> <button class="primary" data-dx-compare="'+x.i+'" title="UPR bilan solishtirish" aria-label="UPR bilan solishtirish" style="font-size:19px;padding:8px 12px">🔍</button> <button class="secondary" data-dx-map="'+x.i+'" title="Shtrix-kod biriktirish" aria-label="Shtrix-kod biriktirish" style="font-size:19px;padding:8px 12px">▥</button></td></tr>').join('')+'</tbody></table></div></td></tr>':'')).join('')+'</tbody></table></div>';
  dxMatchAutoDraw(list);
  root.querySelectorAll('[data-dx-group]').forEach(btn=>btn.onclick=()=>{const g=list[Number(btn.dataset.dxGroup)];if(dxOpenSuppliers.has(g.key))dxOpenSuppliers.delete(g.key);else dxOpenSuppliers.add(g.key);dxDraw()});
  root.querySelectorAll('[data-dx-invoice]').forEach(btn=>btn.onclick=()=>dxInvoiceDialog(docs[Number(btn.dataset.dxInvoice)]));
