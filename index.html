@@ -901,12 +901,16 @@ function ehfUprCompare(d){
  const supplierMainIds=new Set(linked.map(x=>String(x.mainId||'')).filter(Boolean));
  const all=records[3]||[];
  const buyerInn=String(d.b_inn||'').replace(/\D/g,'');
- const storeLinks=storeCompanyRows().filter(x=>String(x.inn||'').replace(/\D/g,'')===buyerInn);
+ const normStore=v=>String(v??'').trim().toLocaleLowerCase().replace(/\s+/g,' ');
  const allStoreLinks=storeCompanyRows();
- const buyerStores=new Set(storeLinks.flatMap(x=>[String(x.storeName||'').trim().toLocaleLowerCase(),String(x.storeId||'').trim().toLocaleLowerCase()]).filter(Boolean));
- const hasStoreMap=allStoreLinks.length>0;
- const related=uprSupplierReceiptCandidates(supplierNames,supplierMainIds).filter(x=>
-  (!hasStoreMap||(buyerStores.has(String(x.store||'').trim().toLocaleLowerCase())||buyerStores.has(String(x.storeId||'').trim().toLocaleLowerCase()))));
+ const storeLinks=buyerInn?allStoreLinks.filter(x=>String(x.inn||'').replace(/\D/g,'')===buyerInn):[];
+ const buyerStores=new Set(storeLinks.flatMap(x=>[normStore(x.storeName),normStore(x.storeId)]).filter(Boolean));
+ const hasStoreMap=true;
+ const related=buyerStores.size&&linked.length?uprSupplierReceiptCandidates(supplierNames,supplierMainIds).filter(x=>{
+  const id=normStore(x.storeId),name=normStore(x.store);
+  if(id&&allStoreLinks.some(r=>normStore(r.storeId)===id))return storeLinks.some(r=>normStore(r.storeId)===id);
+  return !!name&&storeLinks.some(r=>normStore(r.storeName)===name);
+ }):[];
  const expectedRaw=(d.lines||[]).map(l=>({
   name:String(l.nm||'').trim(),
   code:invoiceVerifiedBarcode(l,d.s_inn),
@@ -1055,7 +1059,7 @@ function ehfUprCompare(d){
 
 let receiptCompareSelected='';
 function receiptComparePage(){
- return '<div class="panel rc-workspace"><div class="rc-head"><div><h2>🔍 Didox ↔ UPR kirimlarini solishtirish</h2><p class="muted">Ta’minotchi STIR → MAIN ta’minotchi → UPR kirimlari → shtrix-kod → miqdor → narx → summa.</p></div><button class="secondary" id="rcRefresh">↻ Qayta hisoblash</button></div>'+
+ return '<div class="panel rc-workspace"><div class="rc-head"><div><h2>🔍 Didox ↔ UPR kirimlarini solishtirish</h2><p class="muted">Xaridor STIR → do‘kon–korxona → ta’minotchi STIR → UPR kirimlari → shtrix-kod → miqdor → narx → summa.</p></div><button class="secondary" id="rcRefresh">↻ Qayta hisoblash</button></div>'+
  '<div class="rc-stats" id="rcStats"></div>'+
  '<div class="toolbar rc-filters"><input id="rcSearch" placeholder="Faktura №, ta’minotchi, STIR..." style="flex:1;min-width:250px"><select id="rcStatus"><option value="">Barcha natijalar</option><option value="matched">To‘liq mos</option><option value="check">Tekshirish kerak</option><option value="unlinked">Ta’minotchi bog‘lanmagan</option></select><input type="date" id="rcFrom"><input type="date" id="rcTo"><button class="secondary" id="rcClear">Tozalash</button></div>'+
  '<div id="rcTable"></div><div id="rcDetail"></div></div>';
@@ -1072,7 +1076,7 @@ function receiptCompareDraw(){
  const status=document.getElementById('rcStatus')?.value||'',from=document.getElementById('rcFrom')?.value||'',to=document.getElementById('rcTo')?.value||'';
  const source=(Array.isArray(dxDocs)?dxDocs:[]).filter(d=>d.f_no&&Array.isArray(d.lines));
  const token=++rcDrawToken;
- const signature=[(records[3]||[]).length,dxDocs.length,supplierEntities().length,suppliers().length,Object.keys(tasnifMatches||{}).length].join(':');
+ const signature=[(records[3]||[]).length,dxDocs.length,supplierEntities().length,suppliers().length,Object.keys(tasnifMatches||{}).length,JSON.stringify(storeCompanyRows())].join(':');
  if(signature!==rcCacheSignature){rcCompareCache=new WeakMap();rcCacheSignature=signature}
  const eligible=source.filter(d=>{
   const date=String(d.f_sana||'').slice(0,10);
@@ -1316,7 +1320,7 @@ function dxMatchExcludeCircle(el){
 function dxMatchAutoDraw(groups){
  const token=++dxMatchToken;
  uprReceiptIndex=null;uprBarcodeIdCache=null;
- const signature=[(records[3]||[]).length,(barcodeRows||[]).length,dxDocs.length,supplierEntities().length,suppliers().length,Object.keys(tasnifMatches||{}).length].join(':');
+ const signature=[(records[3]||[]).length,(barcodeRows||[]).length,dxDocs.length,supplierEntities().length,suppliers().length,Object.keys(tasnifMatches||{}).length,JSON.stringify(storeCompanyRows())].join(':');
  if(signature!==dxMatchStamp){dxMatchStamp=signature;dxMatchCache=new WeakMap()}
  const jobs=[],totals=new Map();
  groups.forEach((g,gi)=>{
