@@ -932,22 +932,24 @@ function uprResolvedBarcode(x){
  return '';
 }
 function invoiceVerifiedBarcode(l,inn){
- const nm=String(l.nm||'').trim(),mx=String(l.mxik||'').trim(),raw0=String(l.bar||l.barcode||'').trim();
- const override=tasnifMatches[JSON.stringify([nm,mx,raw0])]||tasnifMatches[JSON.stringify([nm,mx,''])];
- if(override?.manual&&tasnifBarcode13(override.barcode))return String(override.barcode);
- const raw=String(l.bar||l.barcode||'').trim();
- if(/^\d{13}$/.test(raw))return raw;
- const name=String(l.nm||'').trim(),mxik=String(l.mxik||'').trim();
+ const name=String(l.nm||'').trim(),mxik=String(l.mxik||'').trim(),raw=String(l.bar||l.barcode||'').trim();
  const saved=tasnifMatches[JSON.stringify([name,mxik,raw])]||tasnifMatches[JSON.stringify([name,mxik,''])];
- const code=typeof saved==='string'?saved:String(saved?.barcode||'').trim();
- if(/^\d{13}$/.test(code))return code;
- const stage=didoxBarcodeStages(l);
- if(stage.code)return stage.code;
  const mapped=ehfMappings[[String(inn||''),mxik,ehfNormalize(name)].join('|')];
  if(mapped){
-  const hits=new Set((records[3]||[]).filter(x=>String(x.tovarId||'')===String(mapped.id||'')&&String(x.variantCode||'')===String(mapped.pc||'')).map(uprResolvedBarcode).filter(x=>/^\d{13}$/.test(x)));
+  const hits=new Set((records[3]||[]).filter(x=>String(x.tovarId||'')===String(mapped.id||'')&&String(x.variantCode||'')===String(mapped.pc||'')).map(uprResolvedBarcode).filter(tasnifBarcode13));
   if(hits.size===1)return [...hits][0];
+  if(hits.size>1)return '';
  }
+ const byName=didoxBarcodeNameIndex(),chosen=saved?.uprName?byName.get(tasnifNameKey(saved.uprName)):null;
+ const exact=chosen||byName.get(tasnifNameKey(tasnifUprStyleName(name)))||byName.get(tasnifNameKey(name));
+ const codes=(exact?.codes||[]).filter(tasnifBarcode13);
+ const code=typeof saved==='string'?saved:String(saved?.barcode||'').trim();
+ if(codes.includes(code))return code;
+ if(codes.length===1)return codes[0];
+ if(codes.length>1)return codes.includes(raw)?raw:'';
+ const catalog=didoxBarcodeCatalog();
+ if(tasnifBarcode13(code)&&catalog.some(x=>x.codes?.includes(code)))return code;
+ if(tasnifBarcode13(raw)&&catalog.some(x=>x.codes?.includes(raw)))return raw;
  return '';
 }
 let uprReceiptIndex=null,uprReceiptIndexRows=null,uprReceiptIndexLength=-1;
@@ -1059,6 +1061,8 @@ function ehfUprCompare(d){
   matchBy:'UPRda ortiqcha',barcodeConflict:false,matched:false
  })});
  const matched=rows.filter(x=>x.matched).length;
+ const quantityMatched=rows.filter(x=>x.code&&x.uprCode&&Math.abs(x.diff)<0.000001).length;
+ const quantityComplete=rows.length>0&&quantityMatched===rows.length&&!ambiguous&&!duplicateClaim;
  const complete=(!hasStoreMap||buyerStores.size>0)&&!!candidates.length&&!ambiguous&&!duplicateClaim&&rows.length>0&&matched===rows.length&&dxStatus(d).type!=='rejected';
  const stores=[...new Set(candidates.map(x=>String(x.store||'').trim()).filter(Boolean))];
  const dates=[...new Set(candidates.map(x=>uprDateISO(x.date)).filter(Boolean))];
@@ -1069,8 +1073,8 @@ function ehfUprCompare(d){
   hasStoreMap&&!buyerStores.size?'Xaridor MCHJ STIRiga do‘kon biriktirilmagan — avtomatik tasdiqlash mumkin emas':
   expected.some(x=>!x.code)?'Didox nomenklaturasida tasdiqlangan shtrix-kod mosligi yo‘q — nomenklaturani bog‘lang':
   !candidates.length?'Bog‘langan MAIN ta’minotchilar UPR kirimlarida fakturadagi shtrix-kod topilmadi':
-  complete?'To‘liq mos':'Shtrix-kod topilgan, lekin miqdor, narx yoki summada farq bor';
- return {linked:linked.length>0,linkedNames:linked.map(x=>x.name),uprCount:candidates.length,rows,matched,complete,reason,method,stores,dates,targetDate};
+  complete?'To‘liq mos':quantityComplete?'Miqdor to‘liq mos — narx yoki summa tafovuti bor':'Shtrix-kod topilgan, lekin miqdor, narx yoki summada farq bor';
+ return {linked:linked.length>0,linkedNames:linked.map(x=>x.name),uprCount:candidates.length,rows,matched,complete,quantityMatched,quantityComplete,reason,method,stores,dates,targetDate};
 }
 
 let receiptCompareSelected='';
@@ -1092,7 +1096,7 @@ function receiptCompareDraw(){
  const status=document.getElementById('rcStatus')?.value||'',from=document.getElementById('rcFrom')?.value||'',to=document.getElementById('rcTo')?.value||'';
  const source=(Array.isArray(dxDocs)?dxDocs:[]).filter(d=>d.f_no&&Array.isArray(d.lines));
  const token=++rcDrawToken;
- const signature=[(records[3]||[]).length,dxDocs.length,supplierEntities().length,suppliers().length,Object.keys(tasnifMatches||{}).length,JSON.stringify(storeCompanyRows())].join(':');
+ const signature=JSON.stringify([records[3]||[],dxDocs,supplierEntities(),suppliers(),tasnifMatches,ehfMappings,storeCompanyRows(),barcodeRows,ehfReviewAll()]);
  if(signature!==rcCacheSignature){rcCompareCache=new WeakMap();rcCacheSignature=signature}
  const eligible=source.filter(d=>{
   const date=String(d.f_sana||'').slice(0,10);
