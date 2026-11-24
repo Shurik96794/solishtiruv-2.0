@@ -936,7 +936,7 @@ function invoiceVerifiedBarcode(l,inn){
  const override=tasnifMatches[JSON.stringify([nm,mx,raw0])]||tasnifMatches[JSON.stringify([nm,mx,''])];
  if(override?.manual&&tasnifBarcode13(override.barcode))return String(override.barcode);
  const raw=String(l.bar||l.barcode||'').trim();
- if(/^\d{13}$/.test(raw))return raw;
+ if(/^\d{13}$/.test(raw)&&didoxBarcodeCatalog().some(x=>x.codes.includes(raw)))return raw;
  const name=String(l.nm||'').trim(),mxik=String(l.mxik||'').trim();
  const saved=tasnifMatches[JSON.stringify([name,mxik,raw])]||tasnifMatches[JSON.stringify([name,mxik,''])];
  const code=typeof saved==='string'?saved:String(saved?.barcode||'').trim();
@@ -1043,7 +1043,7 @@ function ehfUprCompare(d){
    if(!e.code)continue;
    const options=eligible.filter(r=>uprCode(r)===e.code&&Number(r.qty)>0).sort((a,b)=>gap(a)-gap(b));
    const within=options.filter(r=>gap(r)<=30);
-   const pool=within.length?within:options;
+   const pool=within;
    const exact=pool.filter(r=>Math.abs(Number(r.qty)-e.qty)<0.000001);
    if(exact.length===1){selected.push(exact[0]);if(gap(exact[0])>7)warnings.push('sana');continue}
    if(exact.length>1){
@@ -1065,7 +1065,7 @@ function ehfUprCompare(d){
    if(Math.abs(remaining)<0.000001&&picked.length){
     selected.push(...picked);
     if(picked.some(r=>gap(r)>7))warnings.push('sana');
-   }else if(pool.length)warnings.push('miqdor yoki qisman kirim');
+   }else if(pool.length){selected.push(...(picked.length?picked:[pool[0]]));warnings.push('miqdor yoki qisman kirim');}
   }
   candidates=[...new Set(selected)];
   // Diagnostika: fakturaga biriktirilgan kirimni avtomatik tanlab bo‘lmasa,
@@ -1432,7 +1432,7 @@ function dxRefreshOne(d,g,gi,di,btn){
 function dxMatchAutoDraw(groups){
  const token=++dxMatchToken;dxDisplayedMatches=new WeakMap();
  uprReceiptIndex=null;uprBarcodeIdCache=null;
- const signature=[(records[3]||[]).length,(barcodeRows||[]).length,dxDocs.length,supplierEntities().length,suppliers().length,Object.keys(tasnifMatches||{}).length,JSON.stringify(storeCompanyRows())].join(':');
+ const signature=JSON.stringify([records[3],barcodeRows,dxDocs,supplierEntities(),suppliers(),tasnifMatches,ehfMappings,storeCompanyRows()]);
  if(signature!==dxMatchStamp){dxMatchStamp=signature;dxMatchCache=new WeakMap()}
  const jobs=[],totals=new Map();
  groups.forEach((g,gi)=>{
