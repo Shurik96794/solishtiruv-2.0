@@ -1331,8 +1331,27 @@ function dxMatchExcludeCircle(el){
  if(small)small.textContent='Hisobga kirmaydi';
  el.title='Rad etilgan yoki bekor qilingan faktura — moslik foiziga kiritilmaydi';
 }
+let dxDisplayedMatches=new WeakMap();
+function dxMatchMetrics(r){
+ const lines=r.rows||[],n=lines.length,hasCode=x=>!!(x.code&&x.uprCode&&x.code===x.uprCode);
+ return {n,qty:lines.filter(x=>hasCode(x)&&Math.abs(Number(x.didox)-Number(x.upr))<0.000001).length,price:lines.filter(x=>hasCode(x)&&Number(x.didox)>0&&Number(x.upr)>0&&Math.abs(Number(x.didoxPrice)-Number(x.uprPrice))<=0.01).length,linked:!!r.linked};
+}
+function dxRefreshOne(d,g,gi,di,btn){
+ if(dxStatus(d).type==='rejected')return;
+ btn.disabled=true;
+ try{
+  uprReceiptIndex=null;uprBarcodeIdCache=null;
+  const r=ehfUprCompare(d),m=dxMatchMetrics(r);dxMatchCache.set(d,r);dxDisplayedMatches.set(d,m);
+  const circle=(kind,p)=>dxMatchSetCircle(document.querySelector('[data-dx-match="'+kind+'-'+gi+'-'+di+'"]'),p,!m.linked?'unlinked':p===100&&m.n?'matched':'check',kind==='qty'?'Soni':'Narx');
+  circle('qty',m.n?100*m.qty/m.n:0);circle('price',m.n?100*m.price/m.n:0);
+  const eligible=g.docs.filter(x=>dxStatus(x.d).type!=='rejected'),known=eligible.map(x=>dxDisplayedMatches.get(x.d)).filter(Boolean),rows=known.reduce((a,x)=>a+2*x.n,0),matched=known.reduce((a,x)=>a+x.qty+x.price,0),pct=rows?100*matched/rows:0;
+  const state=known.some(x=>!x.linked)?'unlinked':known.length===eligible.length&&pct===100?'matched':'check';
+  dxMatchSetCircle(document.querySelector('[data-dx-match="supplier-'+gi+'"]'),pct,state,known.length<eligible.length?'Tekshirilmoqda':state==='matched'?'To‘liq mos':state==='unlinked'?'Bog‘lanmagan':'Tekshirish');
+  btn.title='Moslik yangilandi';btn.textContent='✓';setTimeout(()=>{btn.textContent='↻';btn.title='Faqat shu faktura mosligini yangilash'},1200);
+ }catch(e){alert('Solishtirish xatosi: '+e.message)}finally{btn.disabled=false}
+}
 function dxMatchAutoDraw(groups){
- const token=++dxMatchToken;
+ const token=++dxMatchToken;dxDisplayedMatches=new WeakMap();
  uprReceiptIndex=null;uprBarcodeIdCache=null;
  const signature=[(records[3]||[]).length,(barcodeRows||[]).length,dxDocs.length,supplierEntities().length,suppliers().length,Object.keys(tasnifMatches||{}).length,JSON.stringify(storeCompanyRows())].join(':');
  if(signature!==dxMatchStamp){dxMatchStamp=signature;dxMatchCache=new WeakMap()}
@@ -1367,7 +1386,7 @@ function dxMatchAutoDraw(groups){
     const state=p=>!r.linked?'unlinked':p===100&&n>0?'matched':'check';
     dxMatchSetCircle(document.querySelector('[data-dx-match="qty-'+job.gi+'-'+job.j+'"]'),qtyPct,state(qtyPct),'Soni');
     dxMatchSetCircle(document.querySelector('[data-dx-match="price-'+job.gi+'-'+job.j+'"]'),pricePct,state(pricePct),'Narx');
-    t.rows+=2*n;t.matched+=qtyMatched+priceMatched;t.complete=t.complete&&r.complete;t.linked=t.linked&&!!r.linked;t.done++;
+    dxDisplayedMatches.set(job.d,{n,qty:qtyMatched,price:priceMatched,linked:!!r.linked});t.rows+=2*n;t.matched+=qtyMatched+priceMatched;t.complete=t.complete&&r.complete;t.linked=t.linked&&!!r.linked;t.done++;
    }catch(err){console.warn('Didox moslik hisoblash xatosi',err);t.complete=false;t.done++}
    const percent=t.rows?100*t.matched/t.rows:0;
    const state=!t.linked?'unlinked':t.done===t.count&&t.rows>0&&t.matched===t.rows&&t.complete?'matched':'check';
@@ -1400,11 +1419,12 @@ function dxDraw(){
  '<div style="overflow:auto"><table><thead><tr><th>Ko‘rish</th><th>Ta’minotchi</th><th>STIR</th><th>Fakturalar</th><th>Jami summa</th><th>Moslik %</th><th>Holat</th></tr></thead><tbody>'+
  list.map((g,gi)=>'<tr><td><button class="secondary" data-dx-group="'+gi+'" title="Fakturalarni ochish" aria-label="Fakturalarni ochish">'+(dxOpenSuppliers.has(g.key)?'◉':'👁')+'</button></td><td><b>'+esc(g.name)+'</b></td><td>'+esc(g.inn)+'</td><td>'+g.docs.length+' ta</td><td>'+g.sum.toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2})+'</td><td>'+dxMatchCircleHtml('supplier-'+gi)+'</td><td>'+dxGroupBadge(g)+'</td></tr>'+
  (dxOpenSuppliers.has(g.key)?'<tr><td colspan="7" style="padding:10px 16px;background:var(--surface,#f7f9fc)"><div style="overflow:auto"><table><thead><tr><th>Sana</th><th>Faktura №</th><th>Xaridor STIR</th><th>Didox holati</th><th>Tekshirish muddati</th><th>Summa</th><th>Ichki tekshiruv</th><th>Soni %</th><th>Narx %</th><th>Amallar</th></tr></thead><tbody>'+
- g.docs.map((x,di)=>'<tr><td>'+esc(x.d.f_sana||'')+'</td><td>'+esc(x.d.f_no||'')+'</td><td>'+esc(x.d.b_inn||'')+'</td><td>'+dxStatusBadge(x.d)+'</td><td>'+dxDeadlineBadge(x.d,x.i)+'</td><td>'+esc(x.d.jami??'')+'</td><td>'+esc(ehfReviewGet(x.d)?.status||'Belgilanmagan')+'</td><td>'+dxMatchCircleHtml('qty-'+gi+'-'+di,true)+'</td><td>'+dxMatchCircleHtml('price-'+gi+'-'+di,true)+'</td><td><button class="secondary" data-dx-invoice="'+x.i+'">👁 Ko‘rish</button> <button class="primary" data-dx-compare="'+x.i+'" title="UPR bilan solishtirish" aria-label="UPR bilan solishtirish" style="font-size:19px;padding:8px 12px">🔍</button> <button class="secondary" data-dx-map="'+x.i+'" title="Shtrix-kod biriktirish" aria-label="Shtrix-kod biriktirish" style="font-size:19px;padding:8px 12px">▥</button></td></tr>').join('')+'</tbody></table></div></td></tr>':'')).join('')+'</tbody></table></div>';
+ g.docs.map((x,di)=>'<tr><td>'+esc(x.d.f_sana||'')+'</td><td>'+esc(x.d.f_no||'')+'</td><td>'+esc(x.d.b_inn||'')+'</td><td>'+dxStatusBadge(x.d)+'</td><td>'+dxDeadlineBadge(x.d,x.i)+'</td><td>'+esc(x.d.jami??'')+'</td><td>'+esc(ehfReviewGet(x.d)?.status||'Belgilanmagan')+'</td><td>'+dxMatchCircleHtml('qty-'+gi+'-'+di,true)+'</td><td>'+dxMatchCircleHtml('price-'+gi+'-'+di,true)+'</td><td><button class="secondary" data-dx-invoice="'+x.i+'">👁 Ko‘rish</button> <button class="primary" data-dx-compare="'+x.i+'" title="UPR bilan solishtirish" aria-label="UPR bilan solishtirish" style="font-size:19px;padding:8px 12px">🔍</button> <button class="secondary" data-dx-map="'+x.i+'" title="Shtrix-kod biriktirish" aria-label="Shtrix-kod biriktirish" style="font-size:19px;padding:8px 12px">▥</button> <button class="secondary" data-dx-refresh="'+gi+'-'+di+'" title="Faqat shu faktura mosligini yangilash" aria-label="Faktura mosligini yangilash" style="font-size:19px;padding:8px 12px" '+(dxStatus(x.d).type==='rejected'?'disabled':'')+'>↻</button></td></tr>').join('')+'</tbody></table></div></td></tr>':'')).join('')+'</tbody></table></div>';
  dxMatchAutoDraw(list);
  root.querySelectorAll('[data-dx-group]').forEach(btn=>btn.onclick=()=>{const g=list[Number(btn.dataset.dxGroup)];if(dxOpenSuppliers.has(g.key))dxOpenSuppliers.delete(g.key);else dxOpenSuppliers.add(g.key);dxDraw()});
  root.querySelectorAll('[data-dx-invoice]').forEach(btn=>btn.onclick=()=>dxInvoiceDialog(docs[Number(btn.dataset.dxInvoice)]));
  root.querySelectorAll('[data-dx-compare]').forEach(btn=>btn.onclick=()=>ehfUprCompareDialog(docs[Number(btn.dataset.dxCompare)]));
+ root.querySelectorAll('[data-dx-refresh]').forEach(btn=>btn.onclick=()=>{const [gi,di]=btn.dataset.dxRefresh.split('-').map(Number),g=list[gi];dxRefreshOne(g.docs[di].d,g,gi,di,btn)});
  root.querySelectorAll('[data-dx-map]').forEach(btn=>btn.onclick=()=>ehfMatchDialog(docs[Number(btn.dataset.dxMap)]));
  root.querySelectorAll('[data-dx-deadline]').forEach(btn=>btn.onclick=()=>alert(dxReceiptInfo(docs[Number(btn.dataset.dxDeadline)]).msg));
 }
