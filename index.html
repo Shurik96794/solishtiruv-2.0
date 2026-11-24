@@ -212,10 +212,27 @@ function kmEdit(id){
 function kmDelete(id){if(confirm('Xodim biriktirishlari o‘chirilsinmi?')){kmSave(kmEmployees.filter(x=>x.id!==id));render()}}
 function kmView(id){
  const emp=kmEmployees.find(x=>x.id===id);if(!emp)return;
- const dlg=document.createElement('dialog');dlg.style.cssText='width:min(1000px,92vw);max-height:85vh;overflow:auto;border:1px solid #cbd5e1;border-radius:12px;padding:20px';
+ const dlg=document.createElement('dialog');dlg.style.cssText='width:min(1100px,92vw);max-height:85vh;overflow:auto;border:1px solid #cbd5e1;border-radius:12px;padding:20px';
+ const draw=()=>{
  const list=suppliers().filter(x=>emp.supplierIds.includes(String(x.id)));
- dlg.innerHTML='<div class="toolbar"><h3 style="flex:1">'+esc(emp.name)+'</h3><button id="kmViewClose" class="secondary">✕</button></div><div class="toolbar"><b>'+list.length+' ta ta’minotchi</b><button id="kmViewAdd" class="primary">＋ Qo‘shish / tahrirlash</button></div><table><thead><tr><th>MAIN ta’minotchi nomi</th><th>MAIN ID</th><th>Yuridik korxona (MCHJ)</th><th>STIR</th></tr></thead><tbody>'+list.map(x=>{const entities=supplierEntities().filter(y=>String(y.supplierId)===String(x.id));return (entities.length?entities:[{}]).map((y,i)=>'<tr>'+(i===0?'<td rowspan="'+Math.max(1,entities.length)+'">'+esc(x.name)+'</td><td rowspan="'+Math.max(1,entities.length)+'">'+esc(x.mainId||'—')+'</td>':'')+'<td>'+esc(y.name||'Biriktirilmagan')+'</td><td>'+esc(y.inn||'—')+'</td></tr>').join('')}).join('')+'</tbody></table>';
- document.body.append(dlg);dlg.querySelector('#kmViewClose').onclick=()=>dlg.close();dlg.querySelector('#kmViewAdd').onclick=()=>{dlg.close();kmEdit(id)};dlg.onclose=()=>dlg.remove();dlg.showModal();
+ dlg.innerHTML='<div class="toolbar"><h3 style="flex:1">'+esc(emp.name)+'</h3><button id="kmViewClose" class="secondary">✕</button></div><p><b>'+list.length+' ta administrator biriktirgan ta’minotchi</b> · Faqat MCHJ ma’lumotlarini tahrirlash mumkin</p><table><thead><tr><th>MAIN ta’minotchi nomi</th><th>MAIN ID</th><th>Yuridik korxona (MCHJ)</th><th>STIR</th><th>Amallar</th></tr></thead><tbody>'+list.map((x,si)=>{const entities=supplierEntities().filter(y=>String(y.supplierId)===String(x.id));return (entities.length?entities:[{}]).map((y,i)=>'<tr>'+(i===0?'<td rowspan="'+Math.max(1,entities.length)+'">'+esc(x.name)+'<div><button class="secondary" data-km-add="'+si+'">＋ MCHJ</button></div></td><td rowspan="'+Math.max(1,entities.length)+'">'+esc(x.mainId||'—')+'</td>':'')+'<td>'+esc(y.name||'Biriktirilmagan')+'</td><td>'+esc(y.inn||'—')+'</td><td>'+(y.id?'<button class="secondary" data-km-edit="'+si+':'+i+'">✎</button>':'')+'</td></tr>').join('')}).join('')+'</tbody></table>';
+ dlg.querySelector('#kmViewClose').onclick=()=>dlg.close();
+ const edit=(supplier,entity)=>{
+ if(!emp.supplierIds.includes(String(supplier.id)))return;
+ const form=document.createElement('dialog');form.style.cssText='width:min(480px,90vw);border:1px solid #cbd5e1;border-radius:12px;padding:20px';
+ form.innerHTML='<h3>'+esc(supplier.name)+'</h3><p>MCHJ nomi</p><input id="kmEntityName" style="width:100%" value="'+esc(entity?.name||'')+'"><p>STIR</p><input id="kmEntityInn" style="width:100%" maxlength="9" inputmode="numeric" value="'+esc(entity?.inn||'')+'"><div class="toolbar"><button class="secondary" id="kmEntityCancel">Bekor qilish</button><button id="kmEntitySave">Saqlash</button></div>';
+ document.body.append(form);form.onclose=()=>form.remove();form.querySelector('#kmEntityCancel').onclick=()=>form.close();form.querySelector('#kmEntitySave').onclick=()=>{
+ const name=form.querySelector('#kmEntityName').value.trim(),inn=form.querySelector('#kmEntityInn').value.trim();
+ if(!name|| (inn&&!/^\d{9}$/.test(inn))){alert('MCHJ nomini va to‘g‘ri STIRni kiriting');return}
+ if(supplierEntities().some(y=>String(y.supplierId)===String(supplier.id)&&y.id!==entity?.id&&((inn&&y.inn===inn)||uprSupplierNorm(y.name)===uprSupplierNorm(name)))){alert('Bu MCHJ allaqachon biriktirilgan');return}
+ const previous=records.supplierEntities;records.supplierEntities=entity?supplierEntities().map(y=>y.id===entity.id?{...y,name,inn}:y):[...supplierEntities(),{id:crypto.randomUUID(),supplierId:supplier.id,name,inn,note:''}];
+ try{save()}catch(e){records.supplierEntities=previous;alert(e.message);return}form.close();draw();
+ };form.showModal();
+ };
+ dlg.querySelectorAll('[data-km-add]').forEach(btn=>btn.onclick=()=>edit(list[Number(btn.dataset.kmAdd)]));
+ dlg.querySelectorAll('[data-km-edit]').forEach(btn=>btn.onclick=()=>{const [si,i]=btn.dataset.kmEdit.split(':').map(Number),x=list[si];edit(x,supplierEntities().filter(y=>String(y.supplierId)===String(x.id))[i])});
+ };
+ document.body.append(dlg);dlg.onclose=()=>dlg.remove();draw();dlg.showModal();
 }
 function kmPage(){
  const tabs='<div class="toolbar"><button class="'+(kmTab==='employees'?'primary':'secondary')+'" onclick="kmTab=\'employees\';render()">👥 Xodimlar</button><button class="'+(kmTab==='invoices'?'primary':'secondary')+'" onclick="kmTab=\'invoices\';render()">📄 Fakturalar</button></div>';
