@@ -263,7 +263,7 @@ function kmPage(){
  const emp=kmEmployees.find(x=>x.id===kmSelected),assigned=emp?suppliers().filter(x=>emp.supplierIds.includes(String(x.id))):[],ids=new Set(assigned.map(x=>String(x.mainId||'')).filter(Boolean)),names=new Set(assigned.map(x=>uprSupplierNorm(x.name))),rows=(records[3]||[]).filter(x=>emp&&(x.supplierId&&ids.has(String(x.supplierId))||names.has(uprSupplierNorm(x.supplier))));
  const sub='<div class="toolbar"><button onclick="kmMode=\'store\';render()">Do‘konga kirim</button><button onclick="kmMode=\'approved\';render()">Buxgalteriyaga kirim</button></div>';
  const picker='<select onchange="kmSelected=this.value;render()"><option value="">KM xodimini tanlang</option>'+kmEmployees.map(x=>'<option value="'+esc(x.id)+'" '+(x.id===kmSelected?'selected':'')+'>'+esc(x.name)+'</option>').join('')+'</select>';
- if(kmMode==='store'){uprBuildInvoiceLinks();const shown=rows.filter(r=>uprLinkFilter==='all'||uprInvoiceLinks.get(r)?.state===uprLinkFilter);return tabs+sub+'<div class="panel">'+picker+uprLinkSelect()+uprLinkStats(rows)+'<div style="overflow:auto"><table><thead><tr><th>Sana</th><th>Ta’minotchi</th><th>Do‘kon</th><th>Faktura</th><th>Tovar</th><th>Soni</th><th>Narxi</th><th>Faktura holati</th></tr></thead><tbody>'+shown.slice(0,300).map(x=>'<tr>'+[x.date,x.supplier,x.store,x.invoiceNo,x.product,x.qty,x.price].map(v=>'<td>'+esc(v)+'</td>').join('')+uprLinkCell(x)+'</tr>').join('')+'</tbody></table></div><p>Ko‘rsatilgan: '+Math.min(shown.length,300)+' / '+shown.length+'</p></div>'}
+ if(kmMode==='store'){uprLinkCacheSig=null;uprBuildInvoiceLinks();const shown=rows.filter(r=>uprLinkFilter==='all'||uprInvoiceLinks.get(r)?.state===uprLinkFilter);return tabs+sub+'<div class="panel">'+picker+uprLinkSelect()+uprLinkStats(rows)+'<div style="overflow:auto"><table><thead><tr><th>Sana</th><th>Ta’minotchi</th><th>Do‘kon</th><th>Faktura</th><th>Tovar</th><th>Soni</th><th>Narxi</th><th>Faktura holati</th></tr></thead><tbody>'+shown.slice(0,300).map(x=>'<tr>'+[x.date,x.supplier,x.store,x.invoiceNo,x.product,x.qty,x.price].map(v=>'<td>'+esc(v)+'</td>').join('')+uprLinkCell(x)+'</tr>').join('')+'</tbody></table></div><p>Ko‘rsatilgan: '+Math.min(shown.length,300)+' / '+shown.length+'</p></div>'}
 
  const inns=new Set(supplierEntities().filter(x=>assigned.some(y=>String(y.id)===String(x.supplierId))).map(x=>String(x.inn||'').trim()).filter(x=>/^\d{9}$/.test(x)));
  const docs=dxDocs.filter(d=>inns.has(String(d.s_inn||'').trim())),bad=docs.filter(d=>dxStatus(d).type==='rejected'||ehfReviewGet(d)?.status==='KMga qaytarilgan'),ok=docs.filter(d=>!bad.includes(d)&&dxStatus(d).type==='signed'&&ehfUprCompare(d).complete),shown=kmMode==='returned'?bad:ok;
@@ -1088,7 +1088,7 @@ function ehfUprCompare(d){
  const shared=uprBuildInvoiceLinks();
  const allocated=[...shared].filter(([r,x])=>x.links.some(v=>v.d===d));
  candidates=allocated.map(([r,x])=>({...r,qty:x.links.filter(v=>v.d===d).reduce((a,v)=>a+v.amount,0)}));
- ambiguous=[...shared.values()].some(x=>x.ambiguous&&x.candidates.includes(d))&&!candidates.length;
+ ambiguous=[...shared.values()].some(x=>x.state==='error'||(x.ambiguous&&x.candidates.includes(d)))&&!candidates.length;
  method='Yagona UPR–EDO bog‘lanish reyestri';
  // Bir xil sotuvchi, xaridor va raqamli fakturalar takror hisoblanishidan himoya.
  const duplicateClaim=!!invoice&&candidates.length>0&&(Array.isArray(dxDocs)?dxDocs:[]).some(other=>other!==d&&uprInvoiceNorm(other.f_no)===invoice&&
@@ -1482,6 +1482,7 @@ function dxMatchAutoDraw(groups){
  if(typeof requestIdleCallback==='function')requestIdleCallback(run,{timeout:800});else setTimeout(run,30);
 }
 function dxDraw(){
+ uprLinkCacheSig=null;
  dxStoreDraw();
  const root=document.getElementById('dxTable');if(!root)return;
  const firm=document.getElementById('dxFirm'),selected=firm?.value||'';
@@ -1781,7 +1782,13 @@ function uprGeneratedBarcodeError(row,code){
 }
 
 let uprInvoiceLinks=new Map(),uprLinkFilter='all';
+let uprLinkCacheSig=null,uprLinkCacheRows=null,uprLinkCacheDocs=null;
 function uprBuildInvoiceLinks(){
+ const sig=JSON.stringify([supplierEntities(),suppliers(),storeCompanyRows(),ehfReviewAll(),tasnifMatches,ehfMappings]);
+ if(uprLinkCacheRows===records[3]&&uprLinkCacheDocs===dxDocs&&uprLinkCacheSig===sig)return uprInvoiceLinks;
+ try{return uprBuildInvoiceLinksRaw(sig)}catch(e){console.error('UPR faktura bog‘lash:',e);uprLinkCacheSig=null;uprInvoiceLinks=new Map((records[3]||[]).map(r=>[r,{qty:0,links:[],candidates:[],state:'error'}]));return uprInvoiceLinks}
+}
+function uprBuildInvoiceLinksRaw(sig){
  const rows=records[3]||[],out=new Map(),idx=new Map(),norm=v=>String(v??'').trim().toLocaleLowerCase().replace(/\s+/g,' '),inn=v=>String(v||'').replace(/\D/g,''),add=(m,k,v)=>{if(!m.has(k))m.set(k,new Set());m.get(k).add(v)};
  const stores=new Map(),entities=new Map(),names=new Map(),ids=new Map();
  for(const r of storeCompanyRows()){if(!/^\d{9}$/.test(inn(r.inn)))continue;for(const k of [norm(r.storeName),norm(r.storeId)].filter(Boolean))add(stores,k,inn(r.inn))}
@@ -1804,16 +1811,16 @@ function uprBuildInvoiceLinks(){
  for(const r of chosen){if(q<=1e-6)break;const amount=Math.min(q,remaining.get(r));if(amount<=0)continue;const x=out.get(r);x.links.push({d,amount,status:j.status,exact:j.exact});x.qty+=amount;remaining.set(r,remaining.get(r)-amount);q-=amount}
  }
  for(const [r,x] of out){x.state=x.qty>0?(x.qty<Number(r.qty)-1e-6?'partial':x.links.some(v=>v.status==='pending')?'pending':'linked'):x.ambiguous||x.candidates.some(d=>dxStatus(d).type!=='rejected'&&!x.returned)?'check':x.returned?'returned':x.state}
- uprInvoiceLinks=out;return out;
+ uprInvoiceLinks=out;uprLinkCacheRows=records[3];uprLinkCacheDocs=dxDocs;uprLinkCacheSig=sig;return out;
 }
-const uprLinkLabels={linked:'🔗 Bog‘langan',pending:'🔗 Imzo kutilmoqda',partial:'🔗 Qisman',missing:'⛓ Bog‘lanmagan',returned:'↩ Qaytarilgan',check:'⚠ Tekshirish kerak',unmapped:'⚠ STIR / kod bog‘lanmagan'};
-function uprLinkCell(r){const x=uprInvoiceLinks.get(r)||{state:'missing',qty:0};const color={linked:'#16834c',pending:'#a16207',partial:'#2563eb',missing:'#b91c1c',returned:'#b91c1c',check:'#a16207',unmapped:'#a16207'}[x.state];return '<td><button class="secondary" style="color:'+color+';white-space:nowrap" onclick="uprLinkOpen('+records[3].indexOf(r)+')">'+uprLinkLabels[x.state]+(x.qty?' · '+x.qty+'/'+Number(r.qty):'')+'</button></td>'}
+const uprLinkLabels={error:'⚠ Hisoblash xatosi',linked:'🔗 Bog‘langan',pending:'🔗 Imzo kutilmoqda',partial:'🔗 Qisman',missing:'⛓ Bog‘lanmagan',returned:'↩ Qaytarilgan',check:'⚠ Tekshirish kerak',unmapped:'⚠ STIR / kod bog‘lanmagan'};
+function uprLinkCell(r){const x=uprInvoiceLinks.get(r)||{state:'missing',qty:0};const color={error:'#a16207',linked:'#16834c',pending:'#a16207',partial:'#2563eb',missing:'#b91c1c',returned:'#b91c1c',check:'#a16207',unmapped:'#a16207'}[x.state];return '<td><button class="secondary" style="color:'+color+';white-space:nowrap" onclick="uprLinkOpen('+records[3].indexOf(r)+')">'+uprLinkLabels[x.state]+(x.qty?' · '+x.qty+'/'+Number(r.qty):'')+'</button></td>'}
 function uprLinkOpen(i){const r=records[3][i],x=uprInvoiceLinks.get(r);if(!r||!x)return;const dlg=document.createElement('dialog');dlg.className='sc-dialog';dlg.style.cssText='width:min(850px,95vw);padding:20px';dlg.innerHTML='<h3>'+esc(r.product)+'</h3><p>'+esc(r.store)+' · '+esc(r.supplier)+' · '+esc(r.date)+'</p><p>'+uprLinkLabels[x.state]+' · '+x.qty+'/'+esc(r.qty)+' dona</p><p class="muted">Faktura raqami ustuvor; raqam bo‘lmasa ±30 kun tekshiriladi. Noaniq moslik tasdiqlangan bog‘lanish emas. Narx va valyuta alohida tekshiriladi.</p>'+[...new Set(x.candidates)].map(d=>'<p><button class="secondary" onclick="dxInvoiceDialog(dxDocs['+dxDocs.indexOf(d)+'])">👁 № '+esc(d.f_no)+'</button> '+esc(d.supplier)+' · '+esc(d.f_sana)+' · '+esc(dxStatus(d).label)+'</p>').join('')+'<button class="secondary" data-close>Yopish</button>';document.body.appendChild(dlg);dlg.querySelector('[data-close]').onclick=()=>dlg.close();dlg.onclose=()=>dlg.remove();dlg.showModal()}
 function uprLinkSelect(){return '<select onchange="uprLinkFilter=this.value;if(active===17)render();else drawRows()"><option value="all">Barcha faktura holatlari</option>'+Object.entries(uprLinkLabels).map(([k,v])=>'<option value="'+k+'" '+(uprLinkFilter===k?'selected':'')+'>'+v+'</option>').join('')+'</select>'}
-function uprLinkStats(rows){const total=rows.reduce((a,r)=>a+Math.max(0,Number(r.qty)||0),0),linked=rows.reduce((a,r)=>a+(uprInvoiceLinks.get(r)?.qty||0),0);return '<p><b>Jami: '+total+' dona · Faktura bilan qoplangan: '+linked+' dona · Qoplanmagan: '+Math.max(0,total-linked)+' dona · '+(total?(100*linked/total).toFixed(1):0)+'%</b></p>'}
+function uprLinkStats(rows){if(rows.some(r=>uprInvoiceLinks.get(r)?.state==='error'))return '<p style="color:#a16207">Faktura mosligini hisoblashda xato. Kirim ma’lumotlari saqlangan.</p>';const total=rows.reduce((a,r)=>a+Math.max(0,Number(r.qty)||0),0),linked=rows.reduce((a,r)=>a+(uprInvoiceLinks.get(r)?.qty||0),0);return '<p><b>Jami: '+total+' dona · Faktura bilan qoplangan: '+linked+' dona · Qoplanmagan: '+Math.max(0,total-linked)+' dona · '+(total?(100*linked/total).toFixed(1):0)+'%</b></p>'}
 
 function drawRows(){
- uprBuildInvoiceLinks();
+ uprLinkCacheSig=null;uprBuildInvoiceLinks();
  const all=records[3]||[],q=(document.getElementById('uprSearch')?.value||'').trim().toLocaleLowerCase(),f=uprAppliedFilters;
  const store=f.store.toLocaleLowerCase(),supplier=f.supplier.toLocaleLowerCase();
  const barcodeState=document.getElementById('uprBarcodeFilter')?.value||'all';const arr=all.filter(x=>{
