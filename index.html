@@ -1058,7 +1058,7 @@ function ehfUprCompare(d){
   matchBy:'UPRda ortiqcha',barcodeConflict:false,matched:false
  })});
  const matched=rows.filter(x=>x.matched).length;
- const quantityMatched=rows.length>0&&rows.every(x=>x.code&&x.uprCode===x.code&&Math.abs(x.diff)<0.000001);
+
  const quantityMatched=rows.filter(x=>x.code&&x.uprCode&&Math.abs(x.diff)<0.000001).length;
  const quantityComplete=rows.length>0&&quantityMatched===rows.length&&!ambiguous&&!duplicateClaim;
  const complete=(!hasStoreMap||buyerStores.size>0)&&!!candidates.length&&!ambiguous&&!duplicateClaim&&rows.length>0&&matched===rows.length&&dxStatus(d).type!=='rejected';
@@ -1072,7 +1072,7 @@ function ehfUprCompare(d){
   expected.some(x=>!x.code)?'Didox nomenklaturasida tasdiqlangan shtrix-kod mosligi yo‘q — nomenklaturani bog‘lang':
   !candidates.length?'Bog‘langan MAIN ta’minotchilar UPR kirimlarida fakturadagi shtrix-kod topilmadi':
   complete?'To‘liq mos':quantityComplete?'Miqdor to‘liq mos — narx yoki summa tafovuti bor':'Shtrix-kod topilgan — miqdor va moliyaviy tafovutlarni alohida tekshiring';
- return {quantityMatched,linked:linked.length>0,linkedNames:linked.map(x=>x.name),uprCount:candidates.length,rows,matched,complete,quantityMatched,quantityComplete,reason,method,stores,dates,targetDate};
+ return {linked:linked.length>0,linkedNames:linked.map(x=>x.name),uprCount:candidates.length,rows,matched,complete,quantityMatched,quantityComplete,reason,method,stores,dates,targetDate};
 }
 
 let receiptCompareSelected='';
