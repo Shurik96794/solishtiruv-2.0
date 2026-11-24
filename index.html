@@ -1084,6 +1084,12 @@ function ehfUprCompare(d){
   method='STIR → UPR ta’minotchi → shtrix-kod → do‘konlar kirimlarini jamlash';
   ambiguous=warnings.length>0;
  }
+ // UPR va KM bilan yagona miqdor taqsimoti.
+ const shared=uprBuildInvoiceLinks();
+ const allocated=[...shared].filter(([r,x])=>x.links.some(v=>v.d===d));
+ candidates=allocated.map(([r,x])=>({...r,qty:x.links.filter(v=>v.d===d).reduce((a,v)=>a+v.amount,0)}));
+ ambiguous=[...shared.values()].some(x=>x.ambiguous&&x.candidates.includes(d))&&!candidates.length;
+ method='Yagona UPR–EDO bog‘lanish reyestri';
  // Bir xil sotuvchi, xaridor va raqamli fakturalar takror hisoblanishidan himoya.
  const duplicateClaim=!!invoice&&candidates.length>0&&(Array.isArray(dxDocs)?dxDocs:[]).some(other=>other!==d&&uprInvoiceNorm(other.f_no)===invoice&&
   String(other.s_inn||'').replace(/\D/g,'')===inn&&
@@ -1782,20 +1788,27 @@ function uprBuildInvoiceLinks(){
  for(const r of supplierEntities())if(/^\d{9}$/.test(inn(r.inn)))add(entities,String(r.supplierId),inn(r.inn));
  for(const r of suppliers()){for(const v of entities.get(String(r.id))||[]){if(r.mainId)add(ids,String(r.mainId),v);if(r.name)add(names,uprSupplierNorm(r.name),v)}}
  for(const r of rows){const code=uprResolvedBarcode(r),bs=stores.get(norm(r.storeId))||stores.get(norm(r.store)),ss=ids.get(String(r.supplierId||''))||names.get(uprSupplierNorm(r.supplier));out.set(r,{qty:0,links:[],candidates:[],state:'missing'});if(!bs?.size||!ss?.size||!/^\d{13}$/.test(code)){out.get(r).state='unmapped';continue}for(const b of bs)for(const a of ss)add(idx,JSON.stringify([a,b,code]),r)}
- const claims=new Map(),review=ehfReviewAll(),seen=new Set();
+ const review=ehfReviewAll(),seen=new Set(),jobs=[],remaining=new Map(rows.map(r=>[r,Math.max(0,Number(r.qty)||0)]));
  for(const d of dxDocs){const key=ehfId(d);if(seen.has(key))continue;seen.add(key);const status=dxStatus(d).type,returned=status==='rejected'||['KMga qaytarilgan','Rad etish tavsiya etiladi'].includes(review[key]?.status);if(!returned&&!['signed','pending'].includes(status))continue;
  const totals=new Map();for(const l of d.lines||[]){const c=invoiceVerifiedBarcode(l,d.s_inn),q=Number(l.q)||0;if(c&&q>0)totals.set(c,(totals.get(c)||0)+q)}
- for(const [c,q] of totals){const no=uprInvoiceNorm(d.f_no),date=uprDateISO(d.f_sana),pool=[...(idx.get(JSON.stringify([inn(d.s_inn),inn(d.b_inn),c]))||[])].filter(r=>Number(r.qty)>0),exact=pool.filter(r=>no&&uprInvoiceNorm(uprInvoiceNumber(r))===no),near=pool.filter(r=>!uprInvoiceNorm(uprInvoiceNumber(r))&&date&&uprDateISO(r.date)===date),options=exact.length?exact:near;
- if(!options.length)continue;
- const total=options.reduce((a,r)=>a+Number(r.qty),0),unique=options.length===1||Math.abs(total-q)<1e-6;
- for(const r of options){const x=out.get(r);x.candidates.push(d);if(returned){x.returned=true;continue}if(!unique){x.ambiguous=true;continue}const amount=options.length===1?Math.min(q,Number(r.qty)):Number(r.qty);if(!claims.has(r))claims.set(r,[]);claims.get(r).push({d,amount,status,exact:!!exact.length})}
+ for(const [c,q] of totals){const no=uprInvoiceNorm(d.f_no),date=uprDateISO(d.f_sana),gap=r=>Math.abs(Date.parse(uprDateISO(r.date))-Date.parse(date))/86400000,pool=[...(idx.get(JSON.stringify([inn(d.s_inn),inn(d.b_inn),c]))||[])].filter(r=>Number(r.qty)>0),exact=pool.filter(r=>no&&uprInvoiceNorm(uprInvoiceNumber(r))===no),near=pool.filter(r=>!uprInvoiceNorm(uprInvoiceNumber(r))&&gap(r)<=30),options=exact.length?exact:near;
+ for(const r of options){const x=out.get(r);x.candidates.push(d);if(returned)x.returned=true}
+ if(!returned&&options.length)jobs.push({d,q,status,exact:!!exact.length,options,gap,date,c});
  }}
- for(const [r,x] of out){const list=claims.get(r)||[],sum=list.reduce((a,v)=>a+v.amount,0);if(sum>Number(r.qty)+1e-6||x.ambiguous){x.state='check';continue}x.links=list;x.qty=sum;x.state=sum>0?(sum<Number(r.qty)-1e-6?'partial':list.some(v=>v.status==='pending')?'pending':'linked'):x.returned?'returned':x.state}
+ jobs.sort((a,b)=>Number(b.exact)-Number(a.exact)||String(a.date).localeCompare(String(b.date))||String(ehfId(a.d)).localeCompare(String(ehfId(b.d))));
+ for(const j of jobs){let q=j.q;const pool=j.options.filter(r=>remaining.get(r)>1e-6).sort((a,b)=>j.gap(a)-j.gap(b)||String(a.date).localeCompare(String(b.date)));if(!pool.length)continue;
+ const total=pool.reduce((a,r)=>a+remaining.get(r),0),exactQty=pool.filter(r=>Math.abs(remaining.get(r)-q)<1e-6),nearest=exactQty.filter(r=>j.gap(r)===j.gap(exactQty[0]));
+ let chosen=pool,proposed=false;
+ if(total>q+1e-6){if(exactQty.length&&nearest.length===1)chosen=[nearest[0]];else if(pool.length>1){proposed=true;chosen=pool.slice().sort((a,b)=>String(a.date).localeCompare(String(b.date)))}}
+ if(proposed){for(const r of chosen){const x=out.get(r);x.ambiguous=true;x.proposed=true}continue}
+ for(const r of chosen){if(q<=1e-6)break;const amount=Math.min(q,remaining.get(r));if(amount<=0)continue;const x=out.get(r);x.links.push({d,amount,status:j.status,exact:j.exact});x.qty+=amount;remaining.set(r,remaining.get(r)-amount);q-=amount}
+ }
+ for(const [r,x] of out){x.state=x.qty>0?(x.qty<Number(r.qty)-1e-6?'partial':x.links.some(v=>v.status==='pending')?'pending':'linked'):x.ambiguous||x.candidates.some(d=>dxStatus(d).type!=='rejected'&&!x.returned)?'check':x.returned?'returned':x.state}
  uprInvoiceLinks=out;return out;
 }
 const uprLinkLabels={linked:'🔗 Bog‘langan',pending:'🔗 Imzo kutilmoqda',partial:'🔗 Qisman',missing:'⛓ Bog‘lanmagan',returned:'↩ Qaytarilgan',check:'⚠ Tekshirish kerak',unmapped:'⚠ STIR / kod bog‘lanmagan'};
 function uprLinkCell(r){const x=uprInvoiceLinks.get(r)||{state:'missing',qty:0};const color={linked:'#16834c',pending:'#a16207',partial:'#2563eb',missing:'#b91c1c',returned:'#b91c1c',check:'#a16207',unmapped:'#a16207'}[x.state];return '<td><button class="secondary" style="color:'+color+';white-space:nowrap" onclick="uprLinkOpen('+records[3].indexOf(r)+')">'+uprLinkLabels[x.state]+(x.qty?' · '+x.qty+'/'+Number(r.qty):'')+'</button></td>'}
-function uprLinkOpen(i){const r=records[3][i],x=uprInvoiceLinks.get(r);if(!r||!x)return;const dlg=document.createElement('dialog');dlg.className='sc-dialog';dlg.style.cssText='width:min(850px,95vw);padding:20px';dlg.innerHTML='<h3>'+esc(r.product)+'</h3><p>'+esc(r.store)+' · '+esc(r.supplier)+' · '+esc(r.date)+'</p><p>'+uprLinkLabels[x.state]+' · '+x.qty+'/'+esc(r.qty)+' dona</p><p class="muted">Narx va valyuta alohida tekshiriladi. Noaniq moslik tasdiqlangan bog‘lanish emas.</p>'+[...new Set(x.candidates)].map(d=>'<p><button class="secondary" onclick="dxInvoiceDialog(dxDocs['+dxDocs.indexOf(d)+'])">👁 № '+esc(d.f_no)+'</button> '+esc(d.supplier)+' · '+esc(d.f_sana)+' · '+esc(dxStatus(d).label)+'</p>').join('')+'<button class="secondary" data-close>Yopish</button>';document.body.appendChild(dlg);dlg.querySelector('[data-close]').onclick=()=>dlg.close();dlg.onclose=()=>dlg.remove();dlg.showModal()}
+function uprLinkOpen(i){const r=records[3][i],x=uprInvoiceLinks.get(r);if(!r||!x)return;const dlg=document.createElement('dialog');dlg.className='sc-dialog';dlg.style.cssText='width:min(850px,95vw);padding:20px';dlg.innerHTML='<h3>'+esc(r.product)+'</h3><p>'+esc(r.store)+' · '+esc(r.supplier)+' · '+esc(r.date)+'</p><p>'+uprLinkLabels[x.state]+' · '+x.qty+'/'+esc(r.qty)+' dona</p><p class="muted">Faktura raqami ustuvor; raqam bo‘lmasa ±30 kun tekshiriladi. Noaniq moslik tasdiqlangan bog‘lanish emas. Narx va valyuta alohida tekshiriladi.</p>'+[...new Set(x.candidates)].map(d=>'<p><button class="secondary" onclick="dxInvoiceDialog(dxDocs['+dxDocs.indexOf(d)+'])">👁 № '+esc(d.f_no)+'</button> '+esc(d.supplier)+' · '+esc(d.f_sana)+' · '+esc(dxStatus(d).label)+'</p>').join('')+'<button class="secondary" data-close>Yopish</button>';document.body.appendChild(dlg);dlg.querySelector('[data-close]').onclick=()=>dlg.close();dlg.onclose=()=>dlg.remove();dlg.showModal()}
 function uprLinkSelect(){return '<select onchange="uprLinkFilter=this.value;if(active===17)render();else drawRows()"><option value="all">Barcha faktura holatlari</option>'+Object.entries(uprLinkLabels).map(([k,v])=>'<option value="'+k+'" '+(uprLinkFilter===k?'selected':'')+'>'+v+'</option>').join('')+'</select>'}
 function uprLinkStats(rows){const total=rows.reduce((a,r)=>a+Math.max(0,Number(r.qty)||0),0),linked=rows.reduce((a,r)=>a+(uprInvoiceLinks.get(r)?.qty||0),0);return '<p><b>Jami: '+total+' dona · Faktura bilan qoplangan: '+linked+' dona · Qoplanmagan: '+Math.max(0,total-linked)+' dona · '+(total?(100*linked/total).toFixed(1):0)+'%</b></p>'}
 
