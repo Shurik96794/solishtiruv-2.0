@@ -932,22 +932,23 @@ function uprResolvedBarcode(x){
  return '';
 }
 function invoiceVerifiedBarcode(l,inn){
- const name=String(l.nm||'').trim(),mxik=String(l.mxik||'').trim(),raw=String(l.bar||l.barcode||'').trim();
+ const nm=String(l.nm||'').trim(),mx=String(l.mxik||'').trim(),raw0=String(l.bar||l.barcode||'').trim();
+ const override=tasnifMatches[JSON.stringify([nm,mx,raw0])]||tasnifMatches[JSON.stringify([nm,mx,''])];
+ if(override?.manual&&tasnifBarcode13(override.barcode))return String(override.barcode);
+ const raw=String(l.bar||l.barcode||'').trim();
+ if(/^\d{13}$/.test(raw))return raw;
+ const name=String(l.nm||'').trim(),mxik=String(l.mxik||'').trim();
  const saved=tasnifMatches[JSON.stringify([name,mxik,raw])]||tasnifMatches[JSON.stringify([name,mxik,''])];
- if(saved?.manual&&tasnifBarcode13(saved.barcode))return String(saved.barcode);
+ const code=typeof saved==='string'?saved:String(saved?.barcode||'').trim();
+ if(/^\d{13}$/.test(code))return code;
+ const stage=didoxBarcodeStages(l);
+ if(stage.code)return stage.code;
  const mapped=ehfMappings[[String(inn||''),mxik,ehfNormalize(name)].join('|')];
  if(mapped){
- const hits=new Set((records[3]||[]).filter(x=>String(x.tovarId||'')===String(mapped.id||'')&&String(x.variantCode||'')===String(mapped.pc||'')).map(uprResolvedBarcode).filter(tasnifBarcode13));
- if(hits.size===1)return [...hits][0];if(hits.size>1)return '';
+  const hits=new Set((records[3]||[]).filter(x=>String(x.tovarId||'')===String(mapped.id||'')&&String(x.variantCode||'')===String(mapped.pc||'')).map(uprResolvedBarcode).filter(x=>/^\d{13}$/.test(x)));
+  if(hits.size===1)return [...hits][0];
  }
- const byName=didoxBarcodeNameIndex();
- const chosen=saved?.uprName?byName.get(tasnifNameKey(saved.uprName)):null;
- const exact=chosen||byName.get(tasnifNameKey(tasnifUprStyleName(name)))||byName.get(tasnifNameKey(name));
- const codes=(exact?.codes||[]).filter(tasnifBarcode13);
- if(codes.length===1)return codes[0];if(codes.length>1)return '';
- const phone=tasnifPhoneCandidate(name,didoxBarcodeCatalog());
- const pc=(phone?.item?.codes||[]).filter(tasnifBarcode13);
- return pc.length===1?pc[0]:'';
+ return '';
 }
 let uprReceiptIndex=null,uprReceiptIndexRows=null,uprReceiptIndexLength=-1;
 function uprSupplierReceiptCandidates(names,ids){
