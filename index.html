@@ -1307,9 +1307,17 @@ function dxMatchCircleHtml(id,small=false){
 }
 function dxMatchSetCircle(el,percent,state,label){
  if(!el)return;
- const pct=Math.max(0,Math.min(100,Math.round(Number(percent)||0)));
- el.style.setProperty('--pct',String(pct));
+ const raw=Math.max(0,Math.min(100,Number(percent)||0)),pct=raw===100?100:Math.min(99,Math.round(raw));
+ const neutral=state==='unlinked'||state==='pending';
+ const end=raw===100?'#16a34a':neutral?'#94a3b8':'hsl('+raw*1.2+',75%,43%)';
+ const start=raw===100?end:neutral?end:'hsl('+Math.max(0,raw*1.2-35)+',78%,48%)';
  el.dataset.state=state;
+ if(raw===100&&!neutral&&label==='Tekshirish')label='To‘liq mos';
+ const paint=p=>{const stop=p*3.6;el.style.background='radial-gradient(closest-side,#fff 76%,transparent 79% 100%),conic-gradient('+start+' 0deg,'+end+' '+stop+'deg,#e5eaf0 '+stop+'deg 360deg)';el.style.setProperty('--pct',String(p))};
+ if(el._matchFrame)cancelAnimationFrame(el._matchFrame);
+ const from=Number(el.style.getPropertyValue('--pct'))||0,t0=performance.now();
+ const tick=t=>{const a=Math.min(1,(t-t0)/550);paint(from+(raw-from)*(1-Math.pow(1-a,3)));if(a<1)el._matchFrame=requestAnimationFrame(tick)};
+ if(window.matchMedia('(prefers-reduced-motion: reduce)').matches)paint(raw);else el._matchFrame=requestAnimationFrame(tick);
  el.querySelector('strong').textContent=pct+'%';
  el.querySelector('small').textContent=label;
  el.title=label+' · '+pct+'% mos';
@@ -1317,7 +1325,7 @@ function dxMatchSetCircle(el,percent,state,label){
 function dxMatchExcludeCircle(el){
  if(!el)return;
  el.style.setProperty('--pct','0');
- el.dataset.state='excluded';
+ if(el._matchFrame)cancelAnimationFrame(el._matchFrame);el.style.background='';el.dataset.state='excluded';
  const strong=el.querySelector('strong'),small=el.querySelector('small');
  if(strong)strong.textContent='—';
  if(small)small.textContent='Hisobga kirmaydi';
