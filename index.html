@@ -1019,76 +1019,12 @@ function ehfUprCompare(d){
   }
   return Math.abs(actual.reduce((n,x)=>n+x.total,0)-targetTotal)<=0.01;
  };
- // Raqam bilan bog‘langan kirimlar ustuvor; boshqa fakturaga tegishli kirimlar
- // sana/shtrix-kod orqali tasodifan qo‘shilmasligi kerak.
- const exact=related.filter(x=>invoice&&uprInvoiceNorm(uprInvoiceNumber(x))===invoice);
- let candidates=exact,method=exact.length?'Faktura raqami':'',ambiguous=false;
- if(!candidates.length&&linked.length){
-  // Bir nechta do‘kon/sanadagi kirimlarni shtrix-kod va miqdor bo‘yicha yig‘ish.
-  // Boshqa faktura raqamiga bog‘langan kirimlar olinmaydi.
-  const codes=new Set(expected.map(e=>e.code).filter(Boolean));
-  const eligible=related.filter(r=>{
-   if(!codes.has(uprCode(r)))return false;
-   const linkedInvoice=uprInvoiceNorm(uprInvoiceNumber(r));
-   // Boshqa raqamli fakturaga tegishli kirim avtomatik qo‘shilmaydi.
-   return !linkedInvoice||linkedInvoice===invoice;
-  });
-  const gap=r=>{
-   const dt=uprDateISO(r.date);
-   const a=Date.parse(String(dt||'')+'T00:00:00Z'),b=Date.parse(String(targetDate||'')+'T00:00:00Z');
-   return Number.isFinite(a)&&Number.isFinite(b)?Math.abs(a-b)/86400000:999999;
-  };
-  const selected=[],warnings=[];
-  for(const e of expected){
-   if(!e.code)continue;
-   const options=eligible.filter(r=>uprCode(r)===e.code&&Number(r.qty)>0).sort((a,b)=>gap(a)-gap(b));
-   const within=options.filter(r=>gap(r)<=30);
-   const pool=within.length?within:options;
-   const exact=pool.filter(r=>Math.abs(Number(r.qty)-e.qty)<0.000001);
-   if(exact.length===1){selected.push(exact[0]);if(gap(exact[0])>7)warnings.push('sana');continue}
-   if(exact.length>1){
-    // Bir xil shtrix-kod va miqdordagi kirimlar orasida sanasi eng yaqin
-    // yagona bo‘lsa tanlanadi; boshqa kirimlarni taxminan qo‘shmaymiz.
-    const sorted=exact.slice().sort((a,b)=>gap(a)-gap(b));
-    if(gap(sorted[0])<gap(sorted[1])){
-     selected.push(sorted[0]);if(gap(sorted[0])>7)warnings.push('sana');
-    }else warnings.push('takroriy kirim');
-    continue;
-   }
-   let remaining=e.qty;
-   const picked=[];
-   for(const r of pool){
-    const qty=Number(r.qty)||0;
-    if(qty<=remaining+0.000001){picked.push(r);remaining-=qty}
-    if(Math.abs(remaining)<0.000001)break;
-   }
-   if(Math.abs(remaining)<0.000001&&picked.length){
-    selected.push(...picked);
-    if(picked.some(r=>gap(r)>7))warnings.push('sana');
-   }else if(pool.length)warnings.push('miqdor yoki qisman kirim');
-  }
-  candidates=[...new Set(selected)];
-  // Diagnostika: fakturaga biriktirilgan kirimni avtomatik tanlab bo‘lmasa,
-  // mos kodli yozuvni ko‘rsatamiz, ammo xavfsizlik uchun tasdiqlamaymiz.
-  if(!candidates.length&&related.length){
-   const potential=related.filter(r=>codes.has(uprCode(r)));
-   if(potential.length){
-    const chosen=[];
-    for(const e of expected){
-     const matches=potential.filter(r=>uprCode(r)===e.code&&Math.abs((Number(r.qty)||0)-e.qty)<0.000001&&Math.abs((Number(r.qty)||0)*(Number(r.price)||0)-e.total)<=0.01);
-     if(matches.length===1)chosen.push(matches[0]);
-    }
-    if(chosen.length){candidates=[...new Set(chosen)];warnings.push('kirimning faktura raqami yoki sanasini tekshirish');}
-   }
-  }
-  method='STIR → UPR ta’minotchi → shtrix-kod → do‘konlar kirimlarini jamlash';
-  ambiguous=warnings.length>0;
- }
+ let candidates=[],method='',ambiguous=false;
  // UPR va KM bilan yagona miqdor taqsimoti.
  const shared=uprBuildInvoiceLinks();
- const allocated=[...shared].filter(([r,x])=>x.links.some(v=>v.d===d));
- candidates=allocated.map(([r,x])=>({...r,qty:x.links.filter(v=>v.d===d).reduce((a,v)=>a+v.amount,0)}));
- ambiguous=[...shared.values()].some(x=>x.state==='error'||(x.ambiguous&&x.candidates.includes(d)))&&!candidates.length;
+ const allocated=[...shared].filter(([r,x])=>x.links.some(v=>ehfId(v.d)===ehfId(d)));
+ candidates=allocated.map(([r,x])=>({...r,qty:x.links.filter(v=>ehfId(v.d)===ehfId(d)).reduce((a,v)=>a+v.amount,0)}));
+ ambiguous=[...shared.values()].some(x=>x.state==='error'||(x.ambiguous&&x.candidates.some(v=>ehfId(v)===ehfId(d))))&&!candidates.length;
  method='Yagona UPR–EDO bog‘lanish reyestri';
  // Bir xil sotuvchi, xaridor va raqamli fakturalar takror hisoblanishidan himoya.
  const duplicateClaim=!!invoice&&candidates.length>0&&(Array.isArray(dxDocs)?dxDocs:[]).some(other=>other!==d&&uprInvoiceNorm(other.f_no)===invoice&&
