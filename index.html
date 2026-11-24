@@ -1128,7 +1128,7 @@ function ehfUprCompare(d){
   expected.some(x=>!x.code)?'Didox nomenklaturasida tasdiqlangan shtrix-kod mosligi yo‘q — nomenklaturani bog‘lang':
   !candidates.length?'Bog‘langan MAIN ta’minotchilar UPR kirimlarida fakturadagi shtrix-kod topilmadi':
   complete?'To‘liq mos':'Shtrix-kod topilgan, lekin miqdor, narx yoki summada farq bor';
- if(complete)edoSaveComparison(d,candidates);
+ 
  return {linked:linked.length>0,linkedNames:linked.map(x=>x.name),uprCount:candidates.length,rows,matched,complete,reason,method,stores,dates,targetDate};
 }
 
@@ -1778,18 +1778,6 @@ function uprGeneratedBarcodeError(row,code){
 
 let uprInvoiceLinks=new Map(),uprLinkFilter='all';
 let uprLinkCacheSig=null,uprLinkCacheRows=null,uprLinkCacheDocs=null;
-const edoLinkKey='solishtiruv_edo_confirmed_links_v1';
-function edoReceiptKey(r){return JSON.stringify([r.id||r.receiptId||r.documentId||'',r.storeId||r.store,r.supplierId||r.supplier,r.date,r.tovarId,r.variantCode,r.product,r.qty,r.price,uprInvoiceNumber(r)])}
-function edoSavedLinks(){try{return JSON.parse(localStorage.getItem(edoLinkKey)||'{}')||{}}catch(e){return {}}}
-function edoSaveComparison(d,candidates){
- const key=ehfId(d),saved=edoSavedLinks(),rows=records[3]||[],counts=new Map();
- for(const r of rows){const k=edoReceiptKey(r);counts.set(k,(counts.get(k)||0)+1)}
- const used=new Set(Object.entries(saved).filter(([k])=>k!==key).flatMap(([,v])=>v.map(x=>x.key)));
- const links=candidates.map(r=>({key:edoReceiptKey(r),amount:Number(r.qty)||0}));
- if(!links.length||links.some(x=>counts.get(x.key)!==1||used.has(x.key)||x.amount<=0))return;
- if(JSON.stringify(saved[key])===JSON.stringify(links))return;
- saved[key]=links;try{localStorage.setItem(edoLinkKey,JSON.stringify(saved));uprLinkCacheSig=null}catch(e){console.warn('EDO bog‘lanish saqlanmadi',e)}
-}
 function uprBuildInvoiceLinks(){
  const sig=JSON.stringify([supplierEntities(),suppliers(),storeCompanyRows(),ehfReviewAll(),tasnifMatches,ehfMappings]);
  if(uprLinkCacheRows===records[3]&&uprLinkCacheDocs===dxDocs&&uprLinkCacheSig===sig)return uprInvoiceLinks;
@@ -1803,13 +1791,6 @@ function uprBuildInvoiceLinksRaw(sig){
  for(const r of suppliers()){for(const v of entities.get(String(r.id))||[]){if(r.mainId)add(ids,String(r.mainId),v);if(r.name)add(names,uprSupplierNorm(r.name),v)}}
  for(const r of rows){const code=uprResolvedBarcode(r),bs=stores.get(norm(r.storeId))||stores.get(norm(r.store)),ss=ids.get(String(r.supplierId||''))||names.get(uprSupplierNorm(r.supplier));out.set(r,{qty:0,links:[],candidates:[],state:'missing'});if(!bs?.size||!ss?.size||!/^\d{13}$/.test(code)){out.get(r).state='unmapped';continue}for(const b of bs)for(const a of ss)add(idx,JSON.stringify([a,b,code]),r)}
  const review=ehfReviewAll(),seen=new Set(),jobs=[],remaining=new Map(rows.map(r=>[r,Math.max(0,Number(r.qty)||0)]));
- const saved=edoSavedLinks(),docsById=new Map(dxDocs.map(d=>[ehfId(d),d])),rowByKey=new Map();
- for(const r of rows){const k=edoReceiptKey(r);if(rowByKey.has(k))rowByKey.set(k,null);else rowByKey.set(k,r)}
- for(const [key,links] of Object.entries(saved)){const d=docsById.get(key);if(!d||!['signed','pending'].includes(dxStatus(d).type)||['KMga qaytarilgan','Rad etish tavsiya etiladi'].includes(review[key]?.status))continue;
- if(!links.every(v=>rowByKey.get(v.key)&&remaining.get(rowByKey.get(v.key))>=v.amount))continue;
- seen.add(key);for(const v of links){const r=rowByKey.get(v.key),x=out.get(r);x.links.push({d,amount:v.amount,status:dxStatus(d).type,exact:true});x.candidates.push(d);x.qty+=v.amount;remaining.set(r,remaining.get(r)-v.amount)}
- }
-
  for(const d of dxDocs){const key=ehfId(d);if(seen.has(key))continue;seen.add(key);const status=dxStatus(d).type,returned=status==='rejected'||['KMga qaytarilgan','Rad etish tavsiya etiladi'].includes(review[key]?.status);if(!returned&&!['signed','pending'].includes(status))continue;
  const totals=new Map();for(const l of d.lines||[]){const c=invoiceVerifiedBarcode(l,d.s_inn),q=Number(l.q)||0;if(c&&q>0)totals.set(c,(totals.get(c)||0)+q)}
  for(const [c,q] of totals){const no=uprInvoiceNorm(d.f_no),date=uprDateISO(d.f_sana),gap=r=>Math.abs(Date.parse(uprDateISO(r.date))-Date.parse(date))/86400000,pool=[...(idx.get(JSON.stringify([inn(d.s_inn),inn(d.b_inn),c]))||[])].filter(r=>Number(r.qty)>0),exact=pool.filter(r=>no&&uprInvoiceNorm(uprInvoiceNumber(r))===no),near=pool.filter(r=>!uprInvoiceNorm(uprInvoiceNumber(r))&&gap(r)<=30),options=exact.length?exact:near;
