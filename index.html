@@ -215,7 +215,7 @@ function kmView(id){
  const dlg=document.createElement('dialog');dlg.style.cssText='width:min(1100px,92vw);max-height:85vh;overflow:auto;border:1px solid #cbd5e1;border-radius:12px;padding:20px';
  const draw=()=>{
  const list=suppliers().filter(x=>emp.supplierIds.includes(String(x.id)));
- dlg.innerHTML='<div class="toolbar"><h3 style="flex:1">'+esc(emp.name)+'</h3><button id="kmViewClose" class="secondary">✕</button></div><p><b>'+list.length+' ta administrator biriktirgan ta’minotchi</b> · Faqat MCHJ ma’lumotlarini tahrirlash mumkin</p><table><thead><tr><th>MAIN ta’minotchi nomi</th><th>MAIN ID</th><th>Yuridik korxona (MCHJ)</th><th>STIR</th><th>Amallar</th></tr></thead><tbody>'+list.map((x,si)=>{const entities=supplierEntities().filter(y=>String(y.supplierId)===String(x.id));return (entities.length?entities:[{}]).map((y,i)=>'<tr>'+(i===0?'<td rowspan="'+Math.max(1,entities.length)+'">'+esc(x.name)+'<div><button class="secondary" data-km-add="'+si+'">＋ MCHJ</button></div></td><td rowspan="'+Math.max(1,entities.length)+'">'+esc(x.mainId||'—')+'</td>':'')+'<td>'+esc(y.name||'Biriktirilmagan')+'</td><td>'+esc(y.inn||'—')+'</td><td>'+(y.id?'<button class="secondary" data-km-edit="'+si+':'+i+'">✎</button>':'')+'</td></tr>').join('')}).join('')+'</tbody></table>';
+ dlg.innerHTML='<div class="toolbar"><h3 style="flex:1">'+esc(emp.name)+'</h3><button id="kmViewClose" class="secondary">✕</button></div><p><b>'+list.length+' ta administrator biriktirgan ta’minotchi</b> · Faqat MCHJ ma’lumotlarini tahrirlash mumkin</p><table><thead><tr><th>MAIN ta’minotchi nomi</th><th>MAIN ID</th><th>Yuridik korxona (MCHJ)</th><th>STIR</th><th>Amallar</th></tr></thead><tbody>'+list.map((x,si)=>{const entities=supplierEntities().filter(y=>String(y.supplierId)===String(x.id)),n=Math.max(1,entities.length);return (entities.length?entities:[{}]).map((y,i)=>'<tr>'+(i===0?'<td rowspan="'+n+'">'+esc(x.name)+'</td><td rowspan="'+n+'">'+esc(x.mainId||'—')+'</td>':'')+'<td>'+esc(y.name||'—')+'</td><td>'+esc(y.inn||'—')+'</td>'+(i===0?'<td rowspan="'+n+'"><button class="secondary" style="color:#238b45;padding:8px 12px" data-km-edit="'+si+'">✎</button></td>':'')+'</tr>').join('')}).join('')+'</tbody></table>';
  dlg.querySelector('#kmViewClose').onclick=()=>dlg.close();
  const edit=(supplier,entity)=>{
  if(!emp.supplierIds.includes(String(supplier.id)))return;
@@ -229,8 +229,12 @@ function kmView(id){
  try{save()}catch(e){records.supplierEntities=previous;alert(e.message);return}form.close();draw();
  };form.showModal();
  };
- dlg.querySelectorAll('[data-km-add]').forEach(btn=>btn.onclick=()=>edit(list[Number(btn.dataset.kmAdd)]));
- dlg.querySelectorAll('[data-km-edit]').forEach(btn=>btn.onclick=()=>{const [si,i]=btn.dataset.kmEdit.split(':').map(Number),x=list[si];edit(x,supplierEntities().filter(y=>String(y.supplierId)===String(x.id))[i])});
+ dlg.querySelectorAll('[data-km-edit]').forEach(btn=>btn.onclick=()=>{
+ const supplier=list[Number(btn.dataset.kmEdit)],editor=document.createElement('dialog'),entities=supplierEntities().filter(y=>String(y.supplierId)===String(supplier.id));
+ editor.style.cssText='width:min(760px,90vw);border:1px solid #cbd5e1;border-radius:12px;padding:20px';
+ editor.innerHTML='<h3>'+esc(supplier.name)+'</h3><p class="muted">Ta’minotchi nomi va MAIN ID o‘zgartirilmaydi.</p><div class="toolbar"><button id="kmAddInside">＋ MCHJ qo‘shish</button><button class="secondary" id="kmCloseInside">Yopish</button></div><table><thead><tr><th>MCHJ nomi</th><th>STIR</th><th>Amallar</th></tr></thead><tbody>'+entities.map((y,i)=>'<tr><td>'+esc(y.name)+'</td><td>'+esc(y.inn||'—')+'</td><td><button class="secondary" data-entity-index="'+i+'">✎</button></td></tr>').join('')+'</tbody></table>';
+ document.body.append(editor);editor.onclose=()=>editor.remove();editor.querySelector('#kmCloseInside').onclick=()=>editor.close();editor.querySelector('#kmAddInside').onclick=()=>{editor.close();edit(supplier)};editor.querySelectorAll('[data-entity-index]').forEach(b=>b.onclick=()=>{editor.close();edit(supplier,entities[Number(b.dataset.entityIndex)])});editor.showModal();
+ });
  };
  document.body.append(dlg);dlg.onclose=()=>dlg.remove();draw();dlg.showModal();
 }
