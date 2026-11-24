@@ -934,23 +934,20 @@ function uprResolvedBarcode(x){
 function invoiceVerifiedBarcode(l,inn){
  const name=String(l.nm||'').trim(),mxik=String(l.mxik||'').trim(),raw=String(l.bar||l.barcode||'').trim();
  const saved=tasnifMatches[JSON.stringify([name,mxik,raw])]||tasnifMatches[JSON.stringify([name,mxik,''])];
+ if(saved?.manual&&tasnifBarcode13(saved.barcode))return String(saved.barcode);
  const mapped=ehfMappings[[String(inn||''),mxik,ehfNormalize(name)].join('|')];
  if(mapped){
-  const hits=new Set((records[3]||[]).filter(x=>String(x.tovarId||'')===String(mapped.id||'')&&String(x.variantCode||'')===String(mapped.pc||'')).map(uprResolvedBarcode).filter(tasnifBarcode13));
-  if(hits.size===1)return [...hits][0];
-  if(hits.size>1)return '';
+ const hits=new Set((records[3]||[]).filter(x=>String(x.tovarId||'')===String(mapped.id||'')&&String(x.variantCode||'')===String(mapped.pc||'')).map(uprResolvedBarcode).filter(tasnifBarcode13));
+ if(hits.size===1)return [...hits][0];if(hits.size>1)return '';
  }
- const byName=didoxBarcodeNameIndex(),chosen=saved?.uprName?byName.get(tasnifNameKey(saved.uprName)):null;
+ const byName=didoxBarcodeNameIndex();
+ const chosen=saved?.uprName?byName.get(tasnifNameKey(saved.uprName)):null;
  const exact=chosen||byName.get(tasnifNameKey(tasnifUprStyleName(name)))||byName.get(tasnifNameKey(name));
  const codes=(exact?.codes||[]).filter(tasnifBarcode13);
- const code=typeof saved==='string'?saved:String(saved?.barcode||'').trim();
- if(codes.includes(code))return code;
- if(codes.length===1)return codes[0];
- if(codes.length>1)return codes.includes(raw)?raw:'';
- const catalog=didoxBarcodeCatalog();
- if(tasnifBarcode13(code)&&catalog.some(x=>x.codes?.includes(code)))return code;
- if(tasnifBarcode13(raw)&&catalog.some(x=>x.codes?.includes(raw)))return raw;
- return '';
+ if(codes.length===1)return codes[0];if(codes.length>1)return '';
+ const phone=tasnifPhoneCandidate(name,didoxBarcodeCatalog());
+ const pc=(phone?.item?.codes||[]).filter(tasnifBarcode13);
+ return pc.length===1?pc[0]:'';
 }
 let uprReceiptIndex=null,uprReceiptIndexRows=null,uprReceiptIndexLength=-1;
 function uprSupplierReceiptCandidates(names,ids){
@@ -1061,6 +1058,7 @@ function ehfUprCompare(d){
   matchBy:'UPRda ortiqcha',barcodeConflict:false,matched:false
  })});
  const matched=rows.filter(x=>x.matched).length;
+ const quantityMatched=rows.length>0&&rows.every(x=>x.code&&x.uprCode===x.code&&Math.abs(x.diff)<0.000001);
  const quantityMatched=rows.filter(x=>x.code&&x.uprCode&&Math.abs(x.diff)<0.000001).length;
  const quantityComplete=rows.length>0&&quantityMatched===rows.length&&!ambiguous&&!duplicateClaim;
  const complete=(!hasStoreMap||buyerStores.size>0)&&!!candidates.length&&!ambiguous&&!duplicateClaim&&rows.length>0&&matched===rows.length&&dxStatus(d).type!=='rejected';
@@ -1073,8 +1071,8 @@ function ehfUprCompare(d){
   hasStoreMap&&!buyerStores.size?'Xaridor MCHJ STIRiga do‘kon biriktirilmagan — avtomatik tasdiqlash mumkin emas':
   expected.some(x=>!x.code)?'Didox nomenklaturasida tasdiqlangan shtrix-kod mosligi yo‘q — nomenklaturani bog‘lang':
   !candidates.length?'Bog‘langan MAIN ta’minotchilar UPR kirimlarida fakturadagi shtrix-kod topilmadi':
-  complete?'To‘liq mos':quantityComplete?'Miqdor to‘liq mos — narx yoki summa tafovuti bor':'Shtrix-kod topilgan, lekin miqdor, narx yoki summada farq bor';
- return {linked:linked.length>0,linkedNames:linked.map(x=>x.name),uprCount:candidates.length,rows,matched,complete,quantityMatched,quantityComplete,reason,method,stores,dates,targetDate};
+  complete?'To‘liq mos':quantityComplete?'Miqdor to‘liq mos — narx yoki summa tafovuti bor':'Shtrix-kod topilgan — miqdor va moliyaviy tafovutlarni alohida tekshiring';
+ return {quantityMatched,linked:linked.length>0,linkedNames:linked.map(x=>x.name),uprCount:candidates.length,rows,matched,complete,quantityMatched,quantityComplete,reason,method,stores,dates,targetDate};
 }
 
 let receiptCompareSelected='';
