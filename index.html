@@ -1196,13 +1196,19 @@ function ehfExport(){
  const rows=[header,...ehfDocs.flatMap(d=>(d.lines||[]).map(l=>[names.get(String(d.b_inn))||d.buyer,d.b_inn,d.supplier,d.s_inn,d.f_no,d.f_sana,dxStatus(d).label,l.nm,l.mxik,didoxLinkedBarcode({...l,_supplierInn:d.s_inn}),l.unit,l.q,l.u,l.sum_q]))];
  downloadData('Didox_EHF_kirim.csv','\ufeff'+rows.map(row=>row.map(quoteCsv).join(';')).join('\r\n'),'text/csv;charset=utf-8');
 }
+function dxBuyerFirms(){
+ const m=new Map();
+ for(const x of storeCompanyRows()){const inn=String(x.inn||'').replace(/\D/g,'');if(inn)m.set(inn,x.company||inn)}
+ for(const d of dxDocs){const inn=String(d.b_inn||'').replace(/\D/g,'');if(inn&&!m.has(inn))m.set(inn,d.buyer||inn)}
+ return [...m.entries()].sort((a,b)=>String(a[1]).localeCompare(String(b[1]),'uz'));
+}
 function didoxPage(){
- const firms=[...new Map((records.storeCompanies||[]).filter(x=>x.inn).map(x=>[String(x.inn),x.company||x.inn])).entries()];
+ const firms=dxBuyerFirms();
  return '<div class="panel dx-workspace"><details class="dx-top-fold"><summary><span class="dx-top-fold-title">📄 EDO — Didox kiruvchi fakturalari</span><span class="dx-top-fold-meta"><span class="dx-readonly">◉ Faqat o‘qish</span><span class="dx-fold-arrow" aria-hidden="true">⌄</span></span></summary><div class="dx-top-fold-body"><p class="muted dx-top-subtitle">Elektron hisobvaraq-fakturalarni kuzatish va nazorat qilish</p><div class="dx-kpis" id="dxKpis"></div><details class="dx-connect" open><summary>🔗 Didox tizimiga ulanish <span class="dx-connect-hint">STIR va parol</span></summary><div class="dx-connect-body>'+
  '<div class="toolbar"><input id="dxInn" inputmode="numeric" maxlength="9" placeholder="MCHJ STIR (9 raqam)" style="width:210px"><input id="dxPassword" type="password" autocomplete="off" placeholder="Didox paroli" style="width:230px"><button class="primary" id="dxLogin">Didox’ga kirish</button><button class="secondary" id="dxLogout">Chiqish</button></div>'+
- '</div></details></div></details><div class="dx-section-label">🔎 Qidiruv va filtrlash</div><div class="toolbar dx-filter-row dx-filter-one-line"><select id="dxFirm"><option value="">MCHJ tanlang</option>'+firms.map(x=>'<option value="'+esc(x[0])+'">'+esc(x[1])+' ('+esc(x[0])+')</option>').join('')+'</select><label>Dan <input type="date" id="dxFrom"></label><label>Gacha <input type="date" id="dxTo"></label><input id="dxSearchInn" inputmode="numeric" placeholder="🔎 Ta’minotchi STIR" style="width:230px;max-width:100%"><label>Faktura <input type="date" id="dxSearchFrom"></label><label>— <input type="date" id="dxSearchTo"></label><select id="dxStatusFilter" aria-label="Didox holati"><option value="">Barcha holatlar</option><option value="signed">Imzolangan</option><option value="pending">Imzolanishi kutilmoqda</option><option value="rejected">Rad etilgan</option><option value="unknown">Aniqlanmagan</option></select><button type="button" class="secondary" id="dxSearchClear">✕ Tozalash</button></div>'+
+ '</div></details></div></details><div class="dx-section-label">🔎 Qidiruv va filtrlash</div><div class="toolbar dx-filter-row dx-filter-one-line"><select id="dxFirm"><option value="">Barcha MCHJlar</option>'+firms.map(x=>'<option value="'+esc(x[0])+'">'+esc(x[1])+' ('+esc(x[0])+')</option>').join('')+'</select><label>Dan <input type="date" id="dxFrom"></label><label>Gacha <input type="date" id="dxTo"></label><input id="dxSearchInn" inputmode="numeric" placeholder="🔎 Ta’minotchi STIR" style="width:230px;max-width:100%"><label>Faktura <input type="date" id="dxSearchFrom"></label><label>— <input type="date" id="dxSearchTo"></label><select id="dxStatusFilter" aria-label="Didox holati"><option value="">Barcha holatlar</option><option value="signed">Imzolangan</option><option value="pending">Imzolanishi kutilmoqda</option><option value="rejected">Rad etilgan</option><option value="unknown">Aniqlanmagan</option></select><button type="button" class="secondary" id="dxSearchClear">✕ Tozalash</button></div>'+
  '<div class="toolbar dx-action-row"><button class="primary" id="dxFetch" disabled>↻ Fakturalar va statuslarni yangilash</button><button class="secondary" id="dxCsv">↓ CSV eksport</button></div>'+
- '<p class="muted">Parol faqat ushbu ochiq sahifaning vaqtinchalik xotirasida turadi. Sayt yangilansa qayta kirish kerak. Parol va token lokal saqlanmaydi.</p><div class="notice" id="dxMessage">STIR va Didox parolini kiritib, «Didox’ga kirish» tugmasini bosing.</div><div id="dxTable"></div></div>';
+ '<p class="muted">Parol faqat ushbu ochiq sahifaning vaqtinchalik xotirasida turadi. Sayt yangilansa qayta kirish kerak. Parol va token lokal saqlanmaydi.</p><div class="notice" id="dxMessage">STIR va Didox parolini kiritib, «Didox’ga kirish» tugmasini bosing.</div><div id="dxBuyerSummary" style="display:flex;gap:8px;flex-wrap:wrap;margin:14px 0"></div><div id="dxTable"></div></div>';
 }
 function dxStatus(d){
  const name=String(d.status_text||'').trim(),code=String(d.doc_status??'').trim();
@@ -1223,7 +1229,7 @@ function dxStatus(d){
 }
 function dxFiltered(){
  const inn=document.getElementById('dxFirm')?.value||'',from=document.getElementById('dxSearchFrom')?.value||'',to=document.getElementById('dxSearchTo')?.value||'',supplierInn=(document.getElementById('dxSearchInn')?.value||'').trim(),status=document.getElementById('dxStatusFilter')?.value||'';
- return dxDocs.filter(d=>(!inn||String(d.b_inn||'')===inn)&&(!supplierInn||String(d.s_inn||'').includes(supplierInn))&&(!status||dxStatus(d).type===status)&&(!from||String(d.f_sana||'').slice(0,10)>=from)&&(!to||String(d.f_sana||'').slice(0,10)<=to));
+ return dxDocs.filter(d=>(!inn||String(d.b_inn||'').replace(/\D/g,'')===inn)&&(!supplierInn||String(d.s_inn||'').includes(supplierInn))&&(!status||dxStatus(d).type===status)&&(!from||String(d.f_sana||'').slice(0,10)>=from)&&(!to||String(d.f_sana||'').slice(0,10)<=to));
 }
 let dxOpenSuppliers=new Set();
 function dxInvoiceDialog(d){
@@ -1365,6 +1371,15 @@ function dxMatchAutoDraw(groups){
 }
 function dxDraw(){
  const root=document.getElementById('dxTable');if(!root)return;
+ const firm=document.getElementById('dxFirm'),selected=firm?.value||'';
+ const firms=dxBuyerFirms();
+ if(firm){firm.innerHTML='<option value="">Barcha MCHJlar</option>'+firms.map(([inn,name])=>'<option value="'+esc(inn)+'">'+esc(name)+' ('+esc(inn)+')</option>').join('');firm.value=selected;}
+ const summary=document.getElementById('dxBuyerSummary');
+ if(summary){
+ const counts=new Map();for(const d of dxDocs){const inn=String(d.b_inn||'').replace(/\D/g,'');counts.set(inn,(counts.get(inn)||0)+1)}
+ summary.innerHTML='<button class="'+(!selected?'primary':'secondary')+'" data-buyer="">Barcha MCHJlar · '+dxDocs.length+'</button>'+firms.filter(([inn])=>counts.has(inn)).map(([inn,name])=>'<button class="'+(selected===inn?'primary':'secondary')+'" data-buyer="'+esc(inn)+'">'+esc(name)+' · '+counts.get(inn)+' ta</button>').join('');
+ summary.querySelectorAll('[data-buyer]').forEach(b=>b.onclick=()=>{firm.value=b.dataset.buyer;dxOpenSuppliers.clear();dxDraw()});
+ }
  const docs=dxFiltered(),groups=new Map();
  docs.forEach((d,i)=>{const key=String(d.s_inn||'').trim()||('nom:'+String(d.supplier||'Noma’lum').trim().toLowerCase());
  if(!groups.has(key))groups.set(key,{key,name:d.supplier||'Noma’lum ta’minotchi',inn:d.s_inn||'',docs:[],sum:0});
