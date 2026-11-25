@@ -1853,6 +1853,12 @@ function uprCoverageOpen(){
  }catch(e){root.textContent='Hisoblash xatosi: '+e.message}};
  dlg.querySelector('[data-run]').onclick=run;dlg.showModal();run();
 }
+function uprSavedInvoiceIndex(){
+ const index=new Map(),docs=new Map((dxDocs||[]).map(d=>[ehfId(d),d])),review=ehfReviewAll();
+ for(const [id,links] of Object.entries(edoSavedLinks())){const d=docs.get(id);if(!d||!['signed','pending'].includes(dxStatus(d).type)||['KMga qaytarilgan','Rad etish tavsiya etiladi'].includes(review[id]?.status)||!Array.isArray(links))continue;for(const l of links){if(!index.has(l.key))index.set(l.key,[]);index.get(l.key).push(d)}}
+ return index;
+}
+let uprCompactPage=0,uprCompactSignature='';
 function drawRows(){
  
  const all=records[3]||[],q=(document.getElementById('uprSearch')?.value||'').trim().toLocaleLowerCase(),f=uprAppliedFilters;
@@ -1869,9 +1875,14 @@ function drawRows(){
  });
  
  const sum=arr.reduce((total,x)=>total+(Number(x.qty)||0)*(Number(x.price)||0),0);
- document.getElementById('rows').innerHTML=' <button class="secondary" onclick="uprCoverageOpen()">UPRda fakturasi yo‘q mahsulotlar</button>'+'<p>Jami: <b>'+all.length+'</b> · Filtr bo‘yicha: <b>'+arr.length+'</b> · Kirim qiymati: <b>'+sum.toLocaleString('uz-UZ')+'</b></p><div style="overflow:auto"><table><thead><tr>'+['Do‘kon nomi','Tovar ID','Variant kodi','Ta’minotchi nomi','Tovar nomi','Soni','Narxi','Kirim sanasi','Shtrix-kod'].map(v=>'<th>'+v+'</th>').join('')+'</tr></thead><tbody>'+arr.slice(0,300).map((x,i)=>'<tr>'+[x.store,x.tovarId,x.variantCode,x.supplier,x.product,x.qty,x.price,x.date].map(v=>'<td>'+esc(v)+'</td>').join('')+'<td><span>'+esc(barcodeDisplay(x))+'</span>'+(!/^\d{13}$/.test(String(barcodeDisplay(x)).trim())?' <button type="button" class="secondary" data-upr-barcode="'+i+'" title="Tovar ID orqali shtrix-kod yaratish va bog‘lash" aria-label="Shtrix-kod yaratish va bog‘lash" style="display:inline-flex;align-items:center;justify-content:center;margin-left:8px;padding:4px 8px;vertical-align:middle">🔗</button>':'')+'</td>'+'</tr>').join('')+'</tbody></table></div>';
+ const signature=JSON.stringify([q,f,barcodeState]);if(signature!==uprCompactSignature){uprCompactPage=0;uprCompactSignature=signature}
+ const pages=Math.max(1,Math.ceil(arr.length/100));uprCompactPage=Math.min(uprCompactPage,pages-1);
+ const visible=arr.slice(uprCompactPage*100,(uprCompactPage+1)*100),savedIndex=uprSavedInvoiceIndex();
+ const invoiceButton=x=>{const docs=savedIndex.get(edoReceiptKey(x))||[];return docs.length===1?' <button class="secondary" style="padding:2px 5px;color:#16834c" title="Bog‘langan faktura" onclick="dxInvoiceDialog(dxDocs['+dxDocs.indexOf(docs[0])+'])">🔗</button>':''};
+
+ document.getElementById('rows').innerHTML=' <button class="secondary" onclick="uprCoverageOpen()">UPRda fakturasi yo‘q mahsulotlar</button>'+'<p>Jami: <b>'+all.length+'</b> · Filtr bo‘yicha: <b>'+arr.length+'</b> · Kirim qiymati: <b>'+sum.toLocaleString('uz-UZ')+'</b></p><div style="overflow:auto"><table style="font-size:12px"><thead><tr>'+['Do‘kon nomi','Tovar ID','Variant kodi','Ta’minotchi nomi','Tovar nomi','Soni','Narxi','Kirim sanasi','Shtrix-kod'].map(v=>'<th>'+v+'</th>').join('')+'</tr></thead><tbody>'+visible.map((x,i)=>'<tr>'+[x.store,x.tovarId,x.variantCode,x.supplier,x.product,x.qty,Number(x.price||0).toLocaleString('uz-UZ'),uprDateISO(x.date)].map(v=>'<td>'+esc(v)+'</td>').join('')+'<td><span>'+esc(barcodeDisplay(x))+'</span>'+invoiceButton(x)+(!/^\d{13}$/.test(String(barcodeDisplay(x)).trim())?' <button type="button" class="secondary" data-upr-barcode="'+i+'" title="Tovar ID orqali shtrix-kod yaratish va bog‘lash" aria-label="Shtrix-kod yaratish va bog‘lash" style="display:inline-flex;align-items:center;justify-content:center;margin-left:8px;padding:4px 8px;vertical-align:middle">🔗</button>':'')+'</td>'+'</tr>').join('')+'</tbody></table></div><p><button class="secondary" onclick="uprCompactPage--;drawRows()" '+(uprCompactPage===0?'disabled':'')+'>‹</button> '+(uprCompactPage+1)+' / '+pages+' <button class="secondary" onclick="uprCompactPage++;drawRows()" '+(uprCompactPage+1>=pages?'disabled':'')+'>›</button></p>';
  document.querySelectorAll('#rows [data-upr-barcode]').forEach(btn=>btn.onclick=()=>{
-  const row=arr[Number(btn.dataset.uprBarcode)];
+  const row=visible[Number(btn.dataset.uprBarcode)];
   if(!row||document.querySelector('.upr-barcode-overlay'))return;
   const overlay=document.createElement('div');
   overlay.className='upr-barcode-overlay';
