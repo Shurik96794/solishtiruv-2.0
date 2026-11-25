@@ -1129,7 +1129,13 @@ function ehfUprCompare(d){
   !candidates.length?'Bog‘langan MAIN ta’minotchilar UPR kirimlarida fakturadagi shtrix-kod topilmadi':
   complete?'To‘liq mos':'Shtrix-kod topilgan, lekin miqdor, narx yoki summada farq bor';
  
- if(complete)edoSaveComparison(d,candidates);
+ if(!duplicateClaim&&['signed','pending'].includes(dxStatus(d).type)&&linked.length&&buyerStores.size){
+ const good=new Set(rows.filter(x=>x.matched&&x.code).map(x=>x.code));
+ const safe=candidates.filter(r=>good.has(uprCode(r))&&(!uprInvoiceNorm(uprInvoiceNumber(r))||uprInvoiceNorm(uprInvoiceNumber(r))===invoice)&&Math.abs(Date.parse(uprDateISO(r.date))-Date.parse(targetDate))<=30*86400000);
+ const totals=new Map();for(const r of safe){const c=uprCode(r);totals.set(c,(totals.get(c)||0)+Number(r.qty))}
+ const verified=safe.filter(r=>Math.abs((totals.get(uprCode(r))||0)-(expected.find(e=>e.code===uprCode(r))?.qty||0))<1e-6);
+ if(verified.length)edoSaveComparison(d,verified);
+}
  return {linked:linked.length>0,linkedNames:linked.map(x=>x.name),uprCount:candidates.length,rows,matched,complete,reason,method,stores,dates,targetDate};
 }
 
@@ -1786,7 +1792,7 @@ function edoSaveComparison(d,candidates){
  const key=ehfId(d),saved=edoSavedLinks(),rows=records[3]||[],counts=new Map();
  for(const r of rows){const k=edoReceiptKey(r);counts.set(k,(counts.get(k)||0)+1)}
  const used=new Set(Object.entries(saved).filter(([k])=>k!==key).flatMap(([,v])=>v.map(x=>x.key)));
- const links=candidates.map(r=>({key:edoReceiptKey(r),amount:Number(r.qty)||0}));
+ const links=candidates.map(r=>({key:edoReceiptKey(r),amount:Number(r.qty)||0})).filter(x=>counts.get(x.key)===1&&!used.has(x.key)&&x.amount>0);
  if(!links.length||links.some(x=>counts.get(x.key)!==1||used.has(x.key)||x.amount<=0))return;
  if(JSON.stringify(saved[key])===JSON.stringify(links))return;
  saved[key]=links;try{localStorage.setItem(edoLinkKey,JSON.stringify(saved));uprLinkCacheSig=null}catch(e){console.warn('EDO bog‘lanish saqlanmadi',e)}
