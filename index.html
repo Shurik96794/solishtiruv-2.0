@@ -1797,11 +1797,11 @@ async function uprBulkBarcode(rows,btn){const all=records[3]||[],ids=new Map(),p
 function uprGeneratedBarcode(row){
  const id=String(row?.tovarId??'').trim();
  // 7 raqamli ichki prefiks + 6 raqamli Tovar ID = 13 raqam.
- if(!/^\d{6}$/.test(id))return '';
- return '1000000'+id;
+ if(!/^\d{5,6}$/.test(id))return '';
+ return id.length===5?'10000000'+id:'1000000'+id;
 }
 function uprGeneratedBarcodeError(row,code){
- if(!code)return 'Tovar ID 6 raqamli bo‘lishi kerak (1000000 + Tovar ID = 13 raqam).';
+ if(!code)return 'Tovar ID 5 yoki 6 raqamli bo‘lishi kerak.';
  const pc=barcodeKey(row.variantCode);
  const sameId=(records[3]||[]).some(x=>String(x.tovarId??'').trim()===String(row.tovarId??'').trim()&&barcodeKey(x.variantCode)!==pc);
  if(sameId)return 'Bu Tovar ID bir nechta PC variantga tegishli. Avtomatik biriktirish xavfli.';
@@ -1938,7 +1938,7 @@ function drawRows(){
   const overlay=document.createElement('div');
   overlay.className='upr-barcode-overlay';
   overlay.setAttribute('role','presentation');
-  overlay.innerHTML='<section class="upr-barcode-dialog" role="dialog" aria-modal="true" aria-labelledby="uprBarcodeTitle"><h3 id="uprBarcodeTitle">🔗 Shtrix-kod yaratish va bog‘lash</h3><div class="upr-info"><strong>Mahsulot:</strong> '+esc(row.product||'—')+'<br><strong>Variant kodi:</strong> '+esc(row.variantCode||'—')+'<br><strong>Do‘kon:</strong> '+esc(row.store||'—')+'</div><label for="uprBarcodeInput"><strong>13 raqamli shtrix-kod</strong></label><input id="uprBarcodeInput" type="text" inputmode="numeric" maxlength="13" autocomplete="off" placeholder="Masalan: 4780119694722"><div class="muted" style="font-size:12px">Tovar ID + 1000000 orqali ichki kod yaratiladi va PC variant bilan SHTRIX KOD bo‘limiga bog‘lanadi.</div><button type="button" class="secondary" data-generate style="margin-top:10px">⚙ Tovar ID dan yaratish</button><p id="uprBarcodeError" style="color:#c0392b;min-height:18px;margin:8px 0 0" aria-live="polite"></p><div class="upr-actions"><button type="button" class="upr-close" data-cancel>Bekor qilish</button><button type="button" class="upr-primary" data-save>✓ Saqlash</button></div></section>';
+  overlay.innerHTML='<section class="upr-barcode-dialog" role="dialog" aria-modal="true" aria-labelledby="uprBarcodeTitle"><h3 id="uprBarcodeTitle">🔗 Shtrix-kod yaratish va bog‘lash</h3><div class="upr-info"><strong>Mahsulot:</strong> '+esc(row.product||'—')+'<br><strong>Variant kodi:</strong> '+esc(row.variantCode||'—')+'<br><strong>Do‘kon:</strong> '+esc(row.store||'—')+'</div><label for="uprBarcodeInput"><strong>13 raqamli shtrix-kod</strong></label><input id="uprBarcodeInput" type="text" inputmode="numeric" maxlength="13" autocomplete="off" placeholder="Masalan: 4780119694722"><div class="muted" style="font-size:12px">5 raqamli ID uchun 10000000, 6 raqamli ID uchun 1000000 prefiksi orqali ichki kod yaratiladi va PC variant bilan SHTRIX KOD bo‘limiga bog‘lanadi.</div><button type="button" class="secondary" data-generate style="margin-top:10px">⚙ Tovar ID dan yaratish</button><p id="uprBarcodeError" style="color:#c0392b;min-height:18px;margin:8px 0 0" aria-live="polite"></p><div class="upr-actions"><button type="button" class="upr-close" data-cancel>Bekor qilish</button><button type="button" class="upr-primary" data-save>✓ Saqlash</button></div></section>';
   document.body.appendChild(overlay);
   const input=overlay.querySelector('input'),saveBtn=overlay.querySelector('[data-save]'),cancelBtn=overlay.querySelector('[data-cancel]'),generateBtn=overlay.querySelector('[data-generate]'),error=overlay.querySelector('#uprBarcodeError');
   const generated=uprGeneratedBarcode(row),generationError=uprGeneratedBarcodeError(row,generated);
