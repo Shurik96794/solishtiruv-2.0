@@ -389,12 +389,12 @@ function didoxLinkedBarcode(l){
 }
 function oneCSyncFromEhf(){
  const source=Array.isArray(ehfDocs)?ehfDocs:[];
- const entries=[];
+ const entries=[],resolvedCodes=new Map();function resolveOnce(l,inn){const k=JSON.stringify([inn,l.nm,l.mxik,l.bar,l.barcode]);if(!resolvedCodes.has(k))resolvedCodes.set(k,didoxLinkedBarcode({...l,_supplierInn:inn}));return resolvedCodes.get(k)}
  for(const d of source){
   if(dxStatus(d).type!=='signed'||!Array.isArray(d.lines)||!d.lines.length)continue;
   const map=new Map();
   for(const l of d.lines){
-   const name=String(l.nm||'').trim(),mxik=String(l.mxik||''),barcode=didoxLinkedBarcode({...l,_supplierInn:d.s_inn}),unit=String(l.unit||''),price=Number(l.u)||0;
+   const name=String(l.nm||'').trim(),mxik=String(l.mxik||''),barcode=resolveOnce(l,d.s_inn),unit=String(l.unit||''),price=Number(l.u)||0;
    const key=JSON.stringify([name,mxik,barcode,unit,price]);
    if(!map.has(key))map.set(key,{name,mxik,barcode,unit,qty:0,price,total:0});
    const row=map.get(key);row.qty+=Number(l.q)||0;row.total+=Number(l.sum_q)||0;
@@ -605,12 +605,12 @@ function tasnifPhoneIdentity(name){
  if(!model.length||!model.some(t=>/\d/.test(t)))return null;
  return {brand,model:model.join(' '),memory,color};
 }
+const phoneCatalogIndex=new WeakMap();
 function tasnifPhoneCandidate(name,catalog){
  const source=tasnifPhoneIdentity(name);if(!source)return null;
+ let index=phoneCatalogIndex.get(catalog);if(!index){index=new Map();for(const item of catalog){if(tasnifIsKPrefixProduct(item.name))continue;const target=tasnifPhoneIdentity(item.name);if(!target)continue;const k=JSON.stringify([target.brand,target.model,target.memory]);if(!index.has(k))index.set(k,[]);index.get(k).push({item,target})}phoneCatalogIndex.set(catalog,index)}
  const found=[];
- for(const item of catalog){
-  if(tasnifIsKPrefixProduct(item.name))continue;
-  const target=tasnifPhoneIdentity(item.name);
+ for(const {item,target} of index.get(JSON.stringify([source.brand,source.model,source.memory]))||[]){
   if(!target||source.brand!==target.brand||source.model!==target.model||source.memory!==target.memory)continue;
   if(source.color&&target.color!==source.color)continue;
   const score=source.color&&target.color?1:0.85;
@@ -691,7 +691,7 @@ let tasnifMatchAutoDirty=false;
 function tasnifBarcode13(value){return /^\d{13}$/.test(String(value??'').trim())}
 function tasnifSoliqValidCodes(mxik){return [...new Set((tasnifSoliqByMxik.get(tasnifNormCode(mxik))||[]).map(y=>String(y.barcode||'').trim()).filter(tasnifBarcode13))]}
 function tasnifMatchRows(){
- const catalog=tasnifUprCatalog().filter(x=>!tasnifIsKPrefixProduct(x.name)),byName=new Map(catalog.map(x=>[x.key,x])),cache=new Map();
+ const catalog=didoxBarcodeCatalog(),byName=didoxBarcodeNameIndex(),cache=new Map();
  const output=tasnifRows().filter(x=>{
   if(tasnifBarcode13(x.barcode))return false;
   // Didox kodi 13 xonadan qisqa bo‘lsa, asl kodni saqlagan holda tekshiruvga chiqaramiz.
