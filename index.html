@@ -1140,9 +1140,17 @@ function ehfUprCompare(d){
 }
 
 let receiptCompareSelected='';
+function rcSavedProductsOpen(){
+ const dlg=document.createElement('dialog');dlg.className='sc-dialog';dlg.style.cssText='width:min(1200px,96vw);max-height:90vh;padding:20px';
+ const index=uprSavedInvoiceIndex(),rows=(records[3]||[]).filter(r=>index.has(edoReceiptKey(r)));
+ dlg.innerHTML='<h3>🔗 Bog‘langan mahsulotlar</h3><input data-q placeholder="Mahsulot, shtrix-kod, faktura"><button data-close>Yopish</button><div data-list></div>';
+ document.body.appendChild(dlg);dlg.onclose=()=>dlg.remove();dlg.querySelector('[data-close]').onclick=()=>dlg.close();
+ const draw=()=>{const q=dlg.querySelector('[data-q]').value.toLowerCase(),items=rows.flatMap(r=>(index.get(edoReceiptKey(r))||[]).map(d=>({r,d}))).filter(({r,d})=>[r.product,r.supplier,r.store,barcodeDisplay(r),d.f_no].some(v=>String(v||'').toLowerCase().includes(q)));const root=dlg.querySelector('[data-list]');root.innerHTML='<p>Jami: '+items.length+' · Birinchi 200 ta natija</p><div style="overflow:auto;max-height:60vh"><table><thead><tr><th>Do‘kon</th><th>Ta’minotchi</th><th>Mahsulot</th><th>Shtrix-kod</th><th>Soni</th><th>Faktura</th></tr></thead><tbody>'+items.slice(0,200).map(({r,d},i)=>'<tr>'+[r.store,r.supplier,r.product,barcodeDisplay(r),r.qty].map(v=>'<td>'+esc(v)+'</td>').join('')+'<td><button data-doc="'+i+'">🔗 '+esc(d.f_no)+'</button></td></tr>').join('')+'</tbody></table></div>';root.querySelectorAll('[data-doc]').forEach(btn=>btn.onclick=()=>dxInvoiceDialog(items[Number(btn.dataset.doc)].d))};
+ dlg.querySelector('[data-q]').oninput=draw;dlg.showModal();draw();
+}
 function receiptComparePage(){
  return '<div class="panel rc-workspace"><div class="rc-head"><div><h2>🔍 Didox ↔ UPR kirimlarini solishtirish</h2><p class="muted">Xaridor STIR → do‘kon–korxona → ta’minotchi STIR → UPR kirimlari → shtrix-kod → miqdor → narx → summa.</p></div><button class="secondary" id="rcRefresh">↻ Qayta hisoblash</button></div>'+
- '<div class="rc-stats" id="rcStats"></div>'+
+ '<div class="toolbar"><button class="secondary" onclick="uprCoverageOpen(true)">Hali buxgalteriya fakturasi yo‘q mahsulotlar</button><button class="secondary" onclick="uprRefreshSavedInvoices(this)">↻ Faktura bog‘lanishlarini yangilash</button><button class="secondary" onclick="rcSavedProductsOpen()">🔗 Bog‘langan mahsulotlar</button></div><div class="rc-stats" id="rcStats"></div>'+
  '<div class="toolbar rc-filters"><input id="rcSearch" placeholder="Faktura №, ta’minotchi, STIR..." style="flex:1;min-width:250px"><select id="rcStatus"><option value="">Barcha natijalar</option><option value="matched">To‘liq mos</option><option value="check">Tekshirish kerak</option><option value="unlinked">Ta’minotchi bog‘lanmagan</option></select><input type="date" id="rcFrom"><input type="date" id="rcTo"><button class="secondary" id="rcClear">Tozalash</button></div>'+
  '<div id="rcTable"></div><div id="rcDetail"></div></div>';
 }
@@ -1840,11 +1848,11 @@ function uprLinkOpen(i){const r=records[3][i],x=uprInvoiceLinks.get(r);if(!r||!x
 function uprLinkSelect(){return '<select onchange="uprLinkFilter=this.value;if(active===17)render();else drawRows()"><option value="all">Barcha faktura holatlari</option>'+Object.entries(uprLinkLabels).map(([k,v])=>'<option value="'+k+'" '+(uprLinkFilter===k?'selected':'')+'>'+v+'</option>').join('')+'</select>'}
 function uprLinkStats(rows){if(rows.some(r=>uprInvoiceLinks.get(r)?.state==='error'))return '<p style="color:#a16207">Faktura mosligini hisoblashda xato. Kirim ma’lumotlari saqlangan.</p>';const total=rows.reduce((a,r)=>a+Math.max(0,Number(r.qty)||0),0),linked=rows.reduce((a,r)=>a+(uprInvoiceLinks.get(r)?.qty||0),0);return '<p><b>Jami: '+total+' dona · Faktura bilan qoplangan: '+linked+' dona · Qoplanmagan: '+Math.max(0,total-linked)+' dona · '+(total?(100*linked/total).toFixed(1):0)+'%</b></p>'}
 
-function uprCoverageOpen(){
+function uprCoverageOpen(fromCompare=false){
  const dlg=document.createElement('dialog');dlg.className='sc-dialog';dlg.style.cssText='width:min(1200px,96vw);max-height:90vh;padding:20px';
  dlg.innerHTML='<h3>Hali buxgalteriya fakturasi yo‘q mahsulotlar</h3><p class="muted">10 kunlik ichki nazorat. Faktura keyin kelgan bo‘lsa ham hisobga olinadi. Miqdorlar FIFO asosida taqsimlanadi.</p><label>Dan <input type="date" data-from></label> <label>Gacha <input type="date" data-to></label> <input data-search placeholder="Ta’minotchi, STIR yoki mahsulot"><button data-run>Hisoblash</button> <button data-close>Yopish</button><div data-result></div>';
  document.body.appendChild(dlg);dlg.onclose=()=>dlg.remove();dlg.querySelector('[data-close]').onclick=()=>dlg.close();
- const f=uprAppliedFilters||{};dlg.querySelector('[data-from]').value=f.from||'';dlg.querySelector('[data-to]').value=f.to||'';dlg.querySelector('[data-search]').value=f.supplier||'';
+ const f=fromCompare?{}:(uprAppliedFilters||{});dlg.querySelector('[data-from]').value=f.from||'';dlg.querySelector('[data-to]').value=f.to||'';dlg.querySelector('[data-search]').value=f.supplier||'';
  const run=()=>{const root=dlg.querySelector('[data-result]');try{
  const from=dlg.querySelector('[data-from]').value,to=dlg.querySelector('[data-to]').value,q=dlg.querySelector('[data-search]').value.trim().toLowerCase(),norm=v=>String(v??'').trim().toLowerCase().replace(/\s+/g,' '),inn=v=>String(v||'').replace(/\D/g,''),valid=v=>/^\d{9}$/.test(v),inPeriod=v=>{const d=uprDateISO(v);return !!d&&(!from||d>=from)&&(!to||d<=to)};
  const stores=new Map(),entities=new Map(),sup=new Map(),owners=new Map(),groups=new Map(),unknown=[];
@@ -1872,7 +1880,7 @@ let uprLinkRefreshRunning=false;
 async function uprRefreshSavedInvoices(btn){
  if(uprLinkRefreshRunning)return;uprLinkRefreshRunning=true;btn.disabled=true;
  let done=0,errors=0;const docs=(dxDocs||[]).filter(d=>['signed','pending'].includes(dxStatus(d).type));
- try{for(const d of docs){try{ehfUprCompare(d)}catch(e){errors++;console.warn('Faktura bog‘lanishi',e)}done++;if(done%10===0){btn.textContent=done+' / '+docs.length;await new Promise(r=>setTimeout(r,0))}}drawRows();alert('Tekshirildi: '+done+' faktura. Xatolar: '+errors)}finally{uprLinkRefreshRunning=false;btn.disabled=false;btn.textContent='↻ Faktura bog‘lanishlarini yangilash'}
+ try{for(const d of docs){try{ehfUprCompare(d)}catch(e){errors++;console.warn('Faktura bog‘lanishi',e)}done++;if(done%10===0){btn.textContent=done+' / '+docs.length;await new Promise(r=>setTimeout(r,0))}}if(document.getElementById('rcTable')){rcCompareCache=new WeakMap();receiptCompareDraw()}else if(document.getElementById('uprSearch'))drawRows();alert('Tekshirildi: '+done+' faktura. Xatolar: '+errors)}finally{uprLinkRefreshRunning=false;btn.disabled=false;btn.textContent='↻ Faktura bog‘lanishlarini yangilash'}
 }
 let uprCompactPage=0,uprCompactSignature='';
 function drawRows(){
@@ -1893,10 +1901,9 @@ function drawRows(){
  const sum=arr.reduce((total,x)=>total+(Number(x.qty)||0)*(Number(x.price)||0),0);
  const signature=JSON.stringify([q,f,barcodeState]);if(signature!==uprCompactSignature){uprCompactPage=0;uprCompactSignature=signature}
  const pages=Math.max(1,Math.ceil(arr.length/100));uprCompactPage=Math.min(uprCompactPage,pages-1);
- const visible=arr.slice(uprCompactPage*100,(uprCompactPage+1)*100),savedIndex=uprSavedInvoiceIndex();
- const invoiceButton=x=>{const docs=savedIndex.get(edoReceiptKey(x))||[];return docs.length===1?' <button class="secondary" style="padding:2px 5px;color:#16834c" title="Bog‘langan faktura" onclick="dxInvoiceDialog(dxDocs['+dxDocs.indexOf(docs[0])+'])">🔗 '+esc(docs[0].f_no||'Faktura')+'</button>':''};
+ const visible=arr.slice(uprCompactPage*100,(uprCompactPage+1)*100);
 
- document.getElementById('rows').innerHTML=' <button class="secondary" onclick="uprCoverageOpen()">Hali buxgalteriya fakturasi yo‘q mahsulotlar</button> <button class="secondary" onclick="uprRefreshSavedInvoices(this)">↻ Faktura bog‘lanishlarini yangilash</button>'+'<p>Jami: <b>'+all.length+'</b> · Filtr bo‘yicha: <b>'+arr.length+'</b> · Kirim qiymati: <b>'+sum.toLocaleString('uz-UZ')+'</b></p><div style="overflow:auto"><table style="font-size:12px"><thead><tr>'+['Do‘kon nomi','Tovar ID','Variant kodi','Ta’minotchi nomi','Tovar nomi','Soni','Narxi','Kirim sanasi','Shtrix-kod'].map(v=>'<th>'+v+'</th>').join('')+'</tr></thead><tbody>'+visible.map((x,i)=>'<tr>'+[x.store,x.tovarId,x.variantCode,x.supplier,x.product,x.qty,Number(x.price||0).toLocaleString('uz-UZ'),uprDateISO(x.date)].map(v=>'<td>'+esc(v)+'</td>').join('')+'<td><span>'+esc(barcodeDisplay(x))+'</span>'+invoiceButton(x)+(!/^\d{13}$/.test(String(barcodeDisplay(x)).trim())?' <button type="button" class="secondary" data-upr-barcode="'+i+'" title="Tovar ID orqali shtrix-kod yaratish va bog‘lash" aria-label="Shtrix-kod yaratish va bog‘lash" style="display:inline-flex;align-items:center;justify-content:center;margin-left:8px;padding:4px 8px;vertical-align:middle">🔗</button>':'')+'</td>'+'</tr>').join('')+'</tbody></table></div><p><button class="secondary" onclick="uprCompactPage--;drawRows()" '+(uprCompactPage===0?'disabled':'')+'>‹</button> '+(uprCompactPage+1)+' / '+pages+' <button class="secondary" onclick="uprCompactPage++;drawRows()" '+(uprCompactPage+1>=pages?'disabled':'')+'>›</button></p>';
+ document.getElementById('rows').innerHTML='<p>Jami: <b>'+all.length+'</b> · Filtr bo‘yicha: <b>'+arr.length+'</b> · Kirim qiymati: <b>'+sum.toLocaleString('uz-UZ')+'</b></p><div style="overflow:auto"><table style="font-size:12px"><thead><tr>'+['Do‘kon nomi','Tovar ID','Variant kodi','Ta’minotchi nomi','Tovar nomi','Soni','Narxi','Kirim sanasi','Shtrix-kod'].map(v=>'<th>'+v+'</th>').join('')+'</tr></thead><tbody>'+visible.map((x,i)=>'<tr>'+[x.store,x.tovarId,x.variantCode,x.supplier,x.product,x.qty,Number(x.price||0).toLocaleString('uz-UZ'),uprDateISO(x.date)].map(v=>'<td>'+esc(v)+'</td>').join('')+'<td><span>'+esc(barcodeDisplay(x))+'</span>'+(!/^\d{13}$/.test(String(barcodeDisplay(x)).trim())?' <button type="button" class="secondary" data-upr-barcode="'+i+'" title="Tovar ID orqali shtrix-kod yaratish va bog‘lash" aria-label="Shtrix-kod yaratish va bog‘lash" style="display:inline-flex;align-items:center;justify-content:center;margin-left:8px;padding:4px 8px;vertical-align:middle">🔗</button>':'')+'</td>'+'</tr>').join('')+'</tbody></table></div><p><button class="secondary" onclick="uprCompactPage--;drawRows()" '+(uprCompactPage===0?'disabled':'')+'>‹</button> '+(uprCompactPage+1)+' / '+pages+' <button class="secondary" onclick="uprCompactPage++;drawRows()" '+(uprCompactPage+1>=pages?'disabled':'')+'>›</button></p>';
  document.querySelectorAll('#rows [data-upr-barcode]').forEach(btn=>btn.onclick=()=>{
   const row=visible[Number(btn.dataset.uprBarcode)];
   if(!row||document.querySelector('.upr-barcode-overlay'))return;
