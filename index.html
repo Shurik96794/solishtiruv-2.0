@@ -524,7 +524,7 @@ function tasnifUprCatalog(){
   const code=String(x.barcode||'').trim(),pc=barcodeKey(x.pc);
   if(!code)continue;
   const name=names.unique(names.byPc.get(pc))||names.unique(names.byId.get(String(x.tovarId??'').trim()))||x.name||'';
-  if(name&&!tasnifIsKPrefixProduct(name)){const k=tasnifNameKey(name);barcodeNameDisplay.set(k,name);if(!byBarcodeName.has(k))byBarcodeName.set(k,new Set());byBarcodeName.get(k).add(code)}
+  for(const alias of new Set([name,String(x.sku||'').trim(),String(x.name||'').trim()])){if(alias&&!tasnifIsKPrefixProduct(alias)&&tasnifBarcode13(code)){const k=tasnifNameKey(alias);barcodeNameDisplay.set(k,alias);if(!byBarcodeName.has(k))byBarcodeName.set(k,new Set());byBarcodeName.get(k).add(code)}}
  }
  for(const x of records[3]||[]){
   const name=String(x.product||'').trim(),key=tasnifNameKey(name),pc=barcodeKey(x.variantCode);
@@ -721,7 +721,7 @@ function tasnifMatchRows(){
    }
   }
   const found=cache.get(nameKey);
-  const chosen=savedUpr||exact||found.barcode?.item||found.name;
+  const chosen=(exact?.codes?.length===1?exact:null)||savedUpr||exact||found.barcode?.item||found.name;
   // UPR nomi tasdiqlangan yoki aynan mos bo‘lsa, uning yagona haqiqiy kodi olinadi.
   // Taxminiy nom mosligida esa faqat 80%+ tekshiruvdan o‘tgan kod qo‘llanadi.
   const uniqueCode=chosen?.codes?.length===1&&tasnifBarcode13(chosen.codes[0])?String(chosen.codes[0]||'').trim():'';
@@ -834,7 +834,7 @@ function tasnifUprCodes(name,index){return [...(index.get(tasnifNameKey(name))||
 function tasnifResolved(x,uprIndex,context){
  const key=JSON.stringify([x.name,x.mxik,x.barcode]);
  const soliqCodes=tasnifSoliqValidCodes(x.mxik);
- const catalog=context?.catalog||tasnifUprCatalog(),byName=context?.byName||new Map(catalog.map(item=>[item.key,item]));
+ const catalog=context?.catalog||didoxBarcodeCatalog(),byName=context?.byName||new Map(catalog.map(item=>[item.key,item]));
  const saved=tasnifMatches[key],savedCode=typeof saved==='string'?saved:saved?.barcode;
  const savedName=typeof saved==='object'?saved?.uprName:'';
  const nameKey=tasnifNameKey(x.name);let chosen=(savedName&&byName.get(tasnifNameKey(savedName)))||byName.get(nameKey)||byName.get(tasnifNameKey(tasnifUprStyleName(x.name)));
@@ -869,7 +869,7 @@ function tasnifFiltered(precomputed){
  return all.filter(x=>(!q||[x.name,x.mxik,x.barcode,x.effectiveBarcode].some(v=>String(v||'').toLocaleLowerCase().includes(q)))&&(filter==='all'||filter==='mxik'&&x.mxik||filter==='barcode'&&x.effectiveBarcode||filter==='missing'&&!x.effectiveBarcode));
 }
 function tasnifResolveAll(){
- const catalog=tasnifUprCatalog(),context={catalog,byName:new Map(catalog.map(x=>[x.key,x])),candidates:new Map()};
+ const catalog=didoxBarcodeCatalog(),context={catalog,byName:didoxBarcodeNameIndex(),candidates:new Map()};
  return tasnifRows().map(x=>tasnifResolved(x,null,context));
 }
 function tasnifBarcodeChoices(x,i){const codes=[...new Set((tasnifSoliqByMxik.get(tasnifNormCode(x.mxik))||[]).map(y=>String(y.barcode||'').trim()).filter(Boolean))];if(!codes.length)return '—';return '<select data-barcode-row="'+i+'" title="Soliq bazasidagi shtrix-kodni tanlang"><option value="">'+codes.length+' ta kod — tanlang</option>'+codes.map(code=>'<option value="'+esc(code)+'">'+esc(code)+'</option>').join('')+'</select>'}
