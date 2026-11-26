@@ -505,7 +505,7 @@ function tasnifSwitchTab(tab){
 const tasnifMatchKey='solishtiruv2_nomenclature_matches';
 let tasnifSaveTimer=null,tasnifSaveChain=Promise.resolve();
 function persistTasnifMatches(){const job=tasnifSaveChain.catch(()=>{}).then(async()=>{const db=await uprDb();await new Promise((resolve,reject)=>{const tx=db.transaction('data','readwrite');tx.objectStore('data').put(tasnifMatches,'nomenclature_matches');tx.oncomplete=()=>{db.close();resolve()};tx.onabort=tx.onerror=()=>{db.close();reject(tx.error||Error('IndexedDB saqlash xatosi'))}});localStorage.removeItem(tasnifMatchKey)});tasnifSaveChain=job;return job}
-function queueTasnifSave(){clearTimeout(tasnifSaveTimer);tasnifSaveTimer=setTimeout(()=>persistTasnifMatches().catch(e=>console.error('Moslik saqlanmadi',e)),400)}
+function queueTasnifSave(){clearTimeout(tasnifSaveTimer);tasnifSaveTimer=setTimeout(()=>persistTasnifMatches().catch(e=>{console.error('Moslik saqlanmadi',e);alert('Nomenklatura mosliklarini saqlashda xato: '+e.message)}),400)}
 async function loadTasnifMatches(){const db=await uprDb();const saved=await new Promise((resolve,reject)=>{const tx=db.transaction('data','readonly'),r=tx.objectStore('data').get('nomenclature_matches');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});db.close();tasnifMatches={...(saved||{}),...tasnifMatches};if(localStorage.getItem(tasnifMatchKey)!==null)await persistTasnifMatches()}
 let tasnifMatches={};try{tasnifMatches=JSON.parse(localStorage.getItem(tasnifMatchKey)||'{}')||{}}catch(e){tasnifMatches={}}
 
@@ -748,6 +748,9 @@ function tasnifMatchRows(){
    if(saved?.barcode!==code||savedName!==item.name){tasnifMatches[key]={uprName:item.name,barcode:code};tasnifMatchAutoDirty=true}
    return {...x,key,uprStyleName:tasnifNomenclatureUprName(x.name),uprName:item.name,uprCodes:item.codes,effectiveBarcode:code,matchPercent:100,status:'matched',exact:true,auto:true};
   }
+  if(!saved?.manual&&normalizedPhoneBrand(x.name)){
+   return {...x,key,uprStyleName:uprStandardName,uprName:'',uprCodes:[],effectiveBarcode:'',matchPercent:null,status:'missing',exact:false,auto:false};
+  }
   const exact=byName.get(nameKey)||byName.get(tasnifNameKey(tasnifNomenclatureUprName(x.name)));
   if(!cache.has(nameKey)){
    // Aniq UPR nomi mavjud bo‘lsa taxminiy qidiruvga o'tmasdan shu nomning kodini olamiz.
@@ -766,7 +769,7 @@ function tasnifMatchRows(){
   const savedCode=typeof saved==='object'?String(saved?.barcode||'').trim():'';
   const safeBarcode=saved?.manual&&tasnifBarcode13(savedCode)?savedCode:(uniqueCode&&(savedUpr||exact||verifiedCandidate)?uniqueCode:(savedCode&&chosen?.codes?.includes(savedCode)?savedCode:''));
   if(!saved?.manual&&chosen&&(!savedUpr||safeBarcode&&saved?.barcode!==safeBarcode)){
-   tasnifMatches[key]={...(typeof saved==='object'&&saved?saved:{}),uprName:chosen.name,...(safeBarcode?{barcode:safeBarcode}:{})};
+   tasnifMatches[key]={...(typeof saved==='object'&&saved?saved:{}),uprName:chosen.name,barcode:safeBarcode||''};
    tasnifMatchAutoDirty=true;
   }
   return {...x,key,uprStyleName:tasnifNomenclatureUprName(x.name),uprName:chosen?.name||'',uprCodes:chosen?.codes||[],effectiveBarcode:safeBarcode,matchPercent:found.barcode&&found.barcode.item?.key===chosen?.key?Math.round(found.barcode.score*100):null,status:safeBarcode?'matched':chosen?'manual':'missing',exact:!!exact,auto:!!chosen&&!savedUpr&&!exact};
@@ -780,8 +783,8 @@ async function tasnifMatchSave(row,barcode,uprName){
  if(!uprName)return false;
  const previous=tasnifMatches[row.key];
  const catalogItem=tasnifUprCatalog().find(x=>x.key===tasnifNameKey(uprName));
- const selectedCode=catalogItem?.codes?.length===1?String(catalogItem.codes[0]||'').trim():'';
- const value={...(typeof previous==='object'&&previous?previous:{}),uprName,barcode:selectedCode};
+ const selectedCode=tasnifBarcode13(barcode)&&catalogItem?.codes?.includes(String(barcode))?String(barcode):catalogItem?.codes?.length===1?String(catalogItem.codes[0]||'').trim():'';
+ const value={...(typeof previous==='object'&&previous?previous:{}),uprName,barcode:selectedCode,manual:true};
  tasnifMatches[row.key]=value;
  try{await persistTasnifMatches();return true}
  catch(e){alert('Moslikni saqlab bo‘lmadi: '+e.message);return false}
@@ -1745,7 +1748,7 @@ function barcodeKey(v){return String(v??'').normalize('NFKC').toUpperCase().repl
 function barcodeNameIndex(){const byPc=new Map(),byId=new Map();for(const x of records[3]||[]){const pc=barcodeKey(x.variantCode),id=String(x.tovarId??'').trim(),name=String(x.product??'').trim();if(!name)continue;if(pc){if(!byPc.has(pc))byPc.set(pc,new Set());byPc.get(pc).add(name)}if(id){if(!byId.has(id))byId.set(id,new Set());byId.get(id).add(name)}}const unique=values=>values&&values.size===1?[...values][0]:'';return {byPc,byId,unique}}
 async function syncUprBarcodeCatalog(rows){const map=new Map();for(const r of barcodeRows){const k=barcodeKey(r.pc);if(!map.has(k))map.set(k,[]);map.get(k).push({...r})}let changed=false;for(const r of rows){if(uprHiddenKmPrefix(r.product)||uprHiddenKmPrefix(r.store))continue;const pc=String(r.variantCode||'').trim(),k=barcodeKey(pc);if(!k)continue;const code=String(r.barcode||'').trim(),valid=/^\d{13}$/.test(code)?code:'';if(!map.has(k)){map.set(k,[{pc,tovarId:String(r.tovarId||''),sku:String(r.sku||''),name:String(r.product||''),barcode:valid}]);changed=true;continue}const group=map.get(k);for(const x of group){for(const [f,v] of [['tovarId',r.tovarId],['sku',r.sku],['name',r.product]])if(!x[f]&&v){x[f]=String(v);changed=true}}if(valid&&!group.some(x=>x.barcode)){group[0].barcode=valid;changed=true}}if(changed){const next=barcodeDedup([...map.values()].flat());await barcodeStore(next);barcodeRows=next;rebuildBarcodeIndex();uprBarcodeIdCache=null;uprLinkCacheSig=null}}
 function barcodeDedup(rows){const groups=new Map();for(const r of rows){const k=barcodeKey(r.pc);if(!k)continue;if(!groups.has(k))groups.set(k,[]);groups.get(k).push(r)}const out=[];for(const g of groups.values()){const manual=g.filter(r=>r.manual&&r.barcode),source=manual.length?manual:g,byCode=new Map();for(const r of source){const code=String(r.barcode||'').trim();if(!byCode.has(code))byCode.set(code,{...r,barcode:code});else{const x=byCode.get(code);for(const f of ['tovarId','sku','name'])if(!x[f]&&r[f])x[f]=r[f]}}if(byCode.size>1)byCode.delete('');for(const r of byCode.values()){for(const f of ['tovarId','sku','name'])if(!r[f])r[f]=g.find(x=>x[f])?.[f]||'';out.push(r)}}return out}
-function rebuildBarcodeIndex(){barcodeIndex=new Map();for(const row of barcodeRows){const k=barcodeKey(row.pc);if(!k)continue;if(!barcodeIndex.has(k))barcodeIndex.set(k,new Set());if(row.barcode)barcodeIndex.get(k).add(String(row.barcode))}}
+function rebuildBarcodeIndex(){didoxBarcodeCache={};barcodeIndex=new Map();for(const row of barcodeRows){const k=barcodeKey(row.pc);if(!k)continue;if(!barcodeIndex.has(k))barcodeIndex.set(k,new Set());if(row.barcode)barcodeIndex.get(k).add(String(row.barcode))}}
 function barcodeMatch(pc){const codes=barcodeIndex.get(barcodeKey(pc));if(!codes||!codes.size)return {status:'missing',barcode:''};if(codes.size>1)return {status:'conflict',barcode:''};return {status:'linked',barcode:[...codes][0]}}
 function barcodeDisplay(row){
  const m=barcodeMatch(row?.variantCode);
