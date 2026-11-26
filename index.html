@@ -738,7 +738,11 @@ function tasnifMatchRows(){
   const key=JSON.stringify([x.name,x.mxik,x.barcode]),nameKey=tasnifNameKey(x.name);
   const saved=tasnifMatches[key],savedName=typeof saved==='object'?saved?.uprName:'';
   const savedUpr=savedName?byName.get(tasnifNameKey(savedName)):null;
-  const skuMatches=skuIndex.get(JSON.stringify([tasnifDeviceType(x.name),tasnifSkuSafeKey(x.name)]));
+  const uprStandardName=tasnifNomenclatureUprName(x.name);
+  const skuMatches=skuIndex.get(JSON.stringify([tasnifDeviceType(uprStandardName),tasnifSkuSafeKey(uprStandardName)]));
+  if(!saved?.manual&&skuMatches?.size>1){
+   return {...x,key,uprStyleName:uprStandardName,uprName:'',uprCodes:[...skuMatches.keys()],effectiveBarcode:'',matchPercent:null,status:'manual',exact:false,auto:false};
+  }
   if(!saved?.manual&&skuMatches?.size===1){
    const item=[...skuMatches.values()][0],code=item.codes[0];
    if(saved?.barcode!==code||savedName!==item.name){tasnifMatches[key]={uprName:item.name,barcode:code};tasnifMatchAutoDirty=true}
