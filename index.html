@@ -717,7 +717,7 @@ function tasnifSkuSafeIndex(){
  return index;
 }
 function tasnifNomenclatureUprName(name){
- const raw=String(name||'').trim().replace(/^\d+\s+(?=смартфон|планшет|smartphone|tablet)/i,'').replace(/\)\s*(EU|RU|PCT)\b/gi,') $1'),brand=normalizedPhoneBrand(raw);
+ const raw=String(name||'').trim().replace(/^(?:\d+\s+)?(?:мобильные\s+сотовые\s+телефоны|мобильные\s+телефоны|сотовые\s+телефоны|мобильный\s+телефон|сотовый\s+телефон)\s*(?:марки\s+)?/iu,'Смартфон ').replace(/^\d+\s+(?=смартфон|планшет|smartphone|tablet)/i,'').replace(/\)\s*(EU|RU|PCT)\b/gi,') $1'),brand=normalizedPhoneBrand(raw);
  if(!brand)return raw.replace(/^\d{4,}\s+(?=\D)/,'').replace(/\s+/g,' ').trim();
  const m=raw.match(/\b(\d{1,2})\s*(?:GB|G)?\s*[+/]\s*(\d{1,4})\s*(GB|TB|G)?\b/i);
  if(!m)return tasnifUprStyleName(raw);
