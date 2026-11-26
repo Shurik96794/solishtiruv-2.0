@@ -562,13 +562,14 @@ function tasnifMatchNormalize(v){
  .replace(/\b(\d{1,2})\s*(?:gb|g)\s+(\d{2,4})\s*(?:gb|g)\b/g,'$1/$2');
  return x.replace(/[^a-z0-9/]+/g,' ').replace(/\s+/g,' ').trim();
 }
+function tasnifDeviceType(name){return /планшет|\b(?:tablet|ipad|pad|tab)\b/i.test(String(name||''))?'tablet':'phone'}
 function tasnifUprStyleName(name){
  const raw=String(name||'').trim(),identity=tasnifPhoneIdentity(raw);
  if(!identity)return raw;
  const cap=v=>v.replace(/\b[a-z]/g,c=>c.toUpperCase());
- const colorWords=['ocean cyan','reddish brown','midnight black','velvet grey','velvet gray','starry purple','awesome navy','awesome gray','awesome grey','awesome lilac','black','white','green','blue','gray','grey','gold','purple','cyan','brown','red'];
+ const colorWords=['graphite gray','graphite grey','mint green','ice blue','ocean blue','sky blue','ocean cyan','reddish brown','midnight black','velvet grey','velvet gray','starry purple','awesome navy','awesome gray','awesome grey','awesome lilac','black','white','green','blue','gray','grey','gold','purple','cyan','brown','red'];
  const lower=raw.toLowerCase(),color=colorWords.find(v=>lower.includes(v))||'';
- return 'Смартфон '+(identity.brand==='redmi'?'Xiaomi Redmi':identity.brand==='poco'?'Xiaomi POCO':cap(identity.brand))+' '+cap(identity.model)+' '+identity.memory+' GB'+(color?' '+cap(color):'');
+ return (identity.type==='tablet'?'Планшет ':'Смартфон ')+(identity.type==='tablet'&&identity.brand==='redmi'?'Redmi':identity.brand==='redmi'?'Xiaomi Redmi':identity.brand==='poco'?'Xiaomi POCO':cap(identity.brand))+' '+cap(identity.model).replace(/\b([45])g\b/gi,'$1G').replace(/\b9 7\b/g,'9.7')+' '+identity.memory+' GB'+(color?' '+cap(color):'');
 }
 function tasnifProductTokens(v){
  return tasnifMatchNormalize(v).split(' ').filter(t=>t.length>1&&!['smartfon','smartphone','galaxy','kursi','divan','mm','gb','mchj','dual','card','sim'].includes(t));
@@ -577,7 +578,7 @@ function tasnifMatchDimensions(v){const m=tasnifMatchNormalize(v).match(/\b\d{2,
 function tasnifMatchMemory(v){const m=tasnifMatchNormalize(v).match(/\b\d{1,2}\/\d{2,4}\b/);return m?m[0]:''}
 function tasnifMatchColor(v){
  const t=' '+tasnifMatchNormalize(v)+' ';
- const colors={oceancyan:['ocean cyan'],cyan:['cyan'],reddishbrown:['reddish brown'],brown:['brown','korichneviy'],black:['black','qora','cherniy','midnight black'],white:['white','oq','beliy'],gray:['gray','grey','seriy','kulrang'],blue:['blue','siniy','kok'],green:['green','zeleniy','yashil'],gold:['gold','zolotoy'],red:['red','krasniy']};
+ const colors={graphitegray:['graphite gray','graphite grey'],mintgreen:['mint green'],iceblue:['ice blue'],oceanblue:['ocean blue'],skyblue:['sky blue'],oceancyan:['ocean cyan'],cyan:['cyan'],reddishbrown:['reddish brown'],brown:['brown','korichneviy'],black:['black','qora','cherniy','midnight black'],white:['white','oq','beliy'],gray:['gray','grey','seriy','kulrang'],blue:['blue','siniy','kok'],green:['green','zeleniy','yashil'],gold:['gold','zolotoy'],red:['red','krasniy']};
  for(const [k,words] of Object.entries(colors))if(words.some(w=>t.includes(' '+w+' ')))return k;
  return '';
 }
@@ -601,7 +602,7 @@ function tasnifPhoneIdentity(name){
  if(!brand||!memory)return null;
  const tokens=norm.split(' '),i=tokens.indexOf(brand);
  if(i<0)return null;
- const stop=new Set(['black','white','green','blue','gray','grey','brown','cyan','purple','red','gold','ice','ocean','reddish','midnight','velvet','starry','awesome','navy','lilac','silver','pink','dual','card','smartfon','gb','pct','ru','eu']);
+ const stop=new Set(['black','white','green','blue','gray','grey','brown','cyan','purple','red','gold','graphite','mint','ice','sky','ocean','reddish','midnight','velvet','starry','awesome','navy','lilac','silver','pink','dual','card','smartfon','gb','pct','ru','eu']);
  const model=[];
  for(const t of tokens.slice(i+1)){
   if(t===memory||stop.has(t))break;
@@ -610,14 +611,14 @@ function tasnifPhoneIdentity(name){
   model.push(t);
  }
  if(!model.length||!model.some(t=>/\d/.test(t)))return null;
- return {brand,model:model.join(' '),memory,color,nfc,region};
+ return {brand,model:model.join(' '),memory,color,nfc,region,type:tasnifDeviceType(raw)};
 }
 const phoneCatalogIndex=new WeakMap();
 function tasnifPhoneCandidate(name,catalog){
  const source=tasnifPhoneIdentity(name);if(!source)return null;
- let index=phoneCatalogIndex.get(catalog);if(!index){index=new Map();for(const item of catalog){if(tasnifIsKPrefixProduct(item.name))continue;const target=tasnifPhoneIdentity(item.name);if(!target)continue;const k=JSON.stringify([target.brand,target.model,target.memory]);if(!index.has(k))index.set(k,[]);index.get(k).push({item,target})}phoneCatalogIndex.set(catalog,index)}
+ let index=phoneCatalogIndex.get(catalog);if(!index){index=new Map();for(const item of catalog){if(tasnifIsKPrefixProduct(item.name))continue;const target=tasnifPhoneIdentity(item.name);if(!target)continue;const k=JSON.stringify([target.type,target.brand,target.model,target.memory]);if(!index.has(k))index.set(k,[]);index.get(k).push({item,target})}phoneCatalogIndex.set(catalog,index)}
  const found=[];
- for(const {item,target} of index.get(JSON.stringify([source.brand,source.model,source.memory]))||[]){
+ for(const {item,target} of index.get(JSON.stringify([source.type,source.brand,source.model,source.memory]))||[]){
   if(!target||source.brand!==target.brand||source.model!==target.model||source.memory!==target.memory)continue;
   if(source.color&&target.color!==source.color)continue;
   if(source.nfc&&target.nfc&&source.nfc!==target.nfc||source.region&&target.region&&source.region!==target.region)continue;
@@ -676,7 +677,7 @@ function tasnifAutoUprCandidate(name,catalog){
   if(memory&&om&&memory!==om)continue;
   if(color&&oc&&color!==oc)continue;
   if(isPhone){
-   if(normalizedPhoneBrand(item.name)!==brand)continue;
+   if(normalizedPhoneBrand(item.name)!==brand||tasnifDeviceType(name)!==tasnifDeviceType(item.name))continue;
    if(modelTokens.length&&!modelTokens.every(t=>tokenSet.has(t)))continue;
    if(memory&&om!==memory)continue;
    if(color&&oc!==color)continue;
