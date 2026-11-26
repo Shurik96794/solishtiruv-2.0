@@ -36,6 +36,9 @@ class Handler(BaseHTTPRequestHandler):
         if p=='/':return self.reply(200,(ROOT/'viewer.html').read_text(encoding='utf-8'),'text/html')
         ident=self.identity()
         if not ident:return self.reply(401,{'error':'Kirish kerak'})
+        if p=='/admin/access':
+            if ident[1]!='admin':return self.reply(403,{'error':'Ruxsat yo‘q'})
+            return self.reply(200,(ROOT/'access.html').read_text(encoding='utf-8'),'text/html')
         if p=='/api/access':
             with db() as c:
                 if ident[1]=='admin':
