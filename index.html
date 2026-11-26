@@ -700,7 +700,7 @@ let tasnifMatchAutoDirty=false;
 function tasnifBarcode13(value){return /^\d{13}$/.test(String(value??'').trim())}
 function tasnifSoliqValidCodes(mxik){return [...new Set((tasnifSoliqByMxik.get(tasnifNormCode(mxik))||[]).map(y=>String(y.barcode||'').trim()).filter(tasnifBarcode13))]}
 function tasnifSkuSafeKey(value){
- return tasnifMatchNormalize(value).replace(/\b(?:smartfon|planshet|tablet|xiaomi(?=\s+(?:redmi|poco))|galaxy|gb|pct|eu|ru|global|color)\b/g,' ').replace(/\bgrey\b/g,'gray').replace(/\s+/g,' ').trim();
+ return tasnifMatchNormalize(String(value||'').replace(/^\s*\d+\s+(?=смартфон|планшет|smartphone|tablet)/i,'').replace(/\)\s*(EU|RU|PCT)\b/gi,') $1').replace(/без\s+функции\s+NFC/gi,'no nfc')).replace(/\b(?:smartfon|planshet|tablet|xiaomi(?=\s+(?:redmi|poco))|galaxy|gb|pct|eu|ru|global|color)\b/g,' ').replace(/\bgrey\b/g,'gray').replace(/\s+/g,' ').trim();
 }
 function tasnifSkuSafeIndex(){
  const index=new Map();
@@ -717,14 +717,14 @@ function tasnifSkuSafeIndex(){
  return index;
 }
 function tasnifNomenclatureUprName(name){
- const raw=String(name||'').trim(),brand=normalizedPhoneBrand(raw);
+ const raw=String(name||'').trim().replace(/^\d+\s+(?=смартфон|планшет|smartphone|tablet)/i,'').replace(/\)\s*(EU|RU|PCT)\b/gi,') $1'),brand=normalizedPhoneBrand(raw);
  if(!brand)return tasnifUprStyleName(raw);
  const m=raw.match(/\b(\d{1,2})\s*(?:GB|G)?\s*[+/]\s*(\d{1,4})\s*(GB|TB|G)?\b/i);
  if(!m)return tasnifUprStyleName(raw);
- const before=raw.slice(0,m.index).replace(/^(?:смартфон|планшет|smartphone|tablet)\s+/i,'').replace(/\b(?:EU|RU|PCT|Global)\b/gi,' ').replace(/\s+/g,' ').trim();
+ const before=raw.slice(0,m.index).replace(/^(?:смартфон|планшет|smartphone|tablet)\s+/i,'').replace(/\(\s*без\s+функции\s+NFC\s*\)/gi,' ').replace(/\b(?:EU|RU|PCT|Global)\b/gi,' ').replace(/\s+/g,' ').trim();
  const model=before.replace(/^(?:Xiaomi\s+)?(?:Redmi|Poco)\b/i,v=>/poco/i.test(v)?'Xiaomi POCO':'Xiaomi Redmi');
  const color=raw.slice(m.index+m[0].length).replace(/\b(?:EU|RU|PCT|Global|Color)\b/gi,' ').replace(/\s+/g,' ').trim();
- return (tasnifDeviceType(raw)==='tablet'?'Планшет ':'Смартфон ')+model+' '+m[1]+'/'+m[2]+' '+(/tb/i.test(m[3]||'')?'TB':'GB')+(color?' '+color:'');
+ return (tasnifDeviceType(raw)==='tablet'?'Планшет ':'Смартфон ')+model+' '+m[1]+'/'+m[2]+' '+(/tb/i.test(m[3]||'')?'TB':'GB')+(color?' '+color.replace(/\b\w+/g,w=>w[0].toUpperCase()+w.slice(1).toLowerCase()):'');
 }
 function tasnifMatchRows(){
  const catalog=didoxBarcodeCatalog(),byName=didoxBarcodeNameIndex(),cache=new Map(),skuIndex=tasnifSkuSafeIndex();
@@ -739,7 +739,7 @@ function tasnifMatchRows(){
   const saved=tasnifMatches[key],savedName=typeof saved==='object'?saved?.uprName:'';
   const savedUpr=savedName?byName.get(tasnifNameKey(savedName)):null;
   const uprStandardName=tasnifNomenclatureUprName(x.name);
-  const skuMatches=skuIndex.get(JSON.stringify([tasnifDeviceType(uprStandardName),tasnifSkuSafeKey(uprStandardName)]));
+  const skuMatches=skuIndex.get(JSON.stringify([tasnifDeviceType(x.name),tasnifSkuSafeKey(x.name)]))||(!/без\s+функции\s+NFC|\bnfc\b/i.test(x.name)?skuIndex.get(JSON.stringify([tasnifDeviceType(uprStandardName),tasnifSkuSafeKey(uprStandardName)])):null);
   if(!saved?.manual&&skuMatches?.size>1){
    return {...x,key,uprStyleName:uprStandardName,uprName:'',uprCodes:[...skuMatches.keys()],effectiveBarcode:'',matchPercent:null,status:'manual',exact:false,auto:false};
   }
