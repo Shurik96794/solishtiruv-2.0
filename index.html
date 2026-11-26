@@ -453,10 +453,12 @@ function oneCExport(){
 
 function tasnifRows(){
  const map=new Map();
- const source=Array.isArray(dxDocs)?dxDocs:[];
+ const sourceMap=new Map();
+ for(const d of [...(Array.isArray(ehfDocs)?ehfDocs:[]),...(Array.isArray(dxDocs)?dxDocs:[])]){const id=JSON.stringify([ehfId(d),String(d.s_inn||'')]);const prev=sourceMap.get(id);if(!prev||(Array.isArray(d.lines)&&d.lines.length))sourceMap.set(id,d)}
+ const source=[...sourceMap.values()];
  for(const d of source){
   for(const l of (Array.isArray(d.lines)?d.lines:[])){
-   const mxik=String(l.mxik||'').trim(),barcode=String(l.bar||'').trim(),name=String(l.nm||'').trim();
+   const mxik=String(l.mxik||'').trim(),barcode=String(l.bar||l.barcode||'').trim(),name=String(l.nm||'').trim();
    if(!mxik&&!barcode&&!name)continue;
    const key=JSON.stringify([mxik,barcode,name]);
    if(!map.has(key))map.set(key,{mxik,barcode,name,docs:new Set(),qty:0,statuses:new Set(),origins:new Map()});
@@ -735,7 +737,7 @@ function tasnifMatchRows(){
   // Didox kodi 13 xonadan qisqa bo‘lsa, asl kodni saqlagan holda tekshiruvga chiqaramiz.
   if(/^\d{1,12}$/.test(String(x.barcode||'').trim()))return true;
   const codes=tasnifSoliqValidCodes(x.mxik);
-  return codes.length===0;
+  return codes.length!==1;
  }).map(x=>{
   const key=JSON.stringify([x.name,x.mxik,x.barcode]),nameKey=tasnifNameKey(x.name);
   const saved=tasnifMatches[key],savedName=typeof saved==='object'?saved?.uprName:'';
@@ -955,10 +957,11 @@ function tasnifEditDidoxBarcode(x){
  input.onkeydown=e=>{if(e.key==='Enter')overlay.querySelector('[data-save]').click()};
  input.focus();input.select();
 }
+let tasnifDidoxPage=0,tasnifDidoxQuery='';
 function tasnifDraw(){
  const root=document.getElementById('tasnifResults');if(!root)return;
- const all=tasnifResolveAll().filter(x=>active!==15||!x.barcode),rows=tasnifFiltered(all);
- root.innerHTML='<div class="toolbar"><button type="button" class="primary" id="tasnifAutoBind">🔗 Soliq MXIKdan shtrix-kodlarni bog‘lash</button></div><div class="tasnif-stats"><span><b>'+all.length+'</b> mahsulot varianti</span><span><b>'+all.filter(x=>x.mxik).length+'</b> MXIK bor</span><span><b>'+all.filter(x=>x.effectiveBarcode).length+'</b> shtrix-kod bor</span><span><b>'+all.filter(x=>!x.effectiveBarcode).length+'</b> shtrix-kodsiz</span></div><div class="ehf-table-wrap"><table class="ehf-table tasnif-table"><thead><tr><th>№</th><th>Mahsulot nomi</th><th>MXIK</th><th>Shtrix-kod</th><th>Fakturalar soni</th><th>Kimning fakturasidan</th><th>Jami miqdor</th><th>Manba</th><th>Tekshirish</th></tr></thead><tbody>'+rows.slice(0,300).map((x,i)=>'<tr><td>'+(i+1)+'</td><td>'+esc(x.name)+'</td><td>'+esc(x.mxik||'—')+'</td><td>'+esc(x.effectiveBarcode||'—')+'</td><td>'+x.docs+'</td><td>'+esc((x.origins||[]).map(o=>(o.supplier||'Noma’lum ta’minotchi')+(o.supplierInn?' (STIR: '+o.supplierInn+')':'')+' · №'+(o.invoice||'—')+(o.date?' · '+o.date:'')).join('; ')||'—')+'</td><td>'+x.qty.toLocaleString('ru-RU')+'</td><td>'+esc(x.barcodeSource)+'</td><td><button type="button" data-tasnif-edit="'+i+'" title="Shtrix-kodni tuzatish" aria-label="Shtrix-kodni tuzatish" style="background:#fff1f2;color:#b91c1c;border:1px solid #fca5a5;border-radius:8px;padding:7px 11px;font-weight:700;cursor:pointer">❗</button></td></tr>').join('')+'</tbody></table></div><p class="muted">Topildi: '+rows.length+' ta (tezkor ko‘rishda dastlabki 300 ta; eksportda barchasi). Soliqdan topilgan shtrix-kodlar lokal nomenklatura mosligi sifatida saqlanadi; asl Didox hujjati o‘zgarmaydi.</p>';document.getElementById('tasnifAutoBind').onclick=tasnifAutoBind;root.querySelectorAll('[data-tasnif-edit]').forEach(btn=>btn.onclick=()=>tasnifEditDidoxBarcode(rows[Number(btn.dataset.tasnifEdit)]));root.querySelectorAll('[data-barcode-row]').forEach(el=>el.onchange=async()=>{const x=rows[Number(el.dataset.barcodeRow)];if(!x||!el.value)return;tasnifMatches[JSON.stringify([x.name,x.mxik,x.barcode])]=el.value;try{await persistTasnifMatches()}catch(e){alert('Saqlanmadi: '+e.message);return}tasnifDraw()});
+ const all=tasnifResolveAll().filter(x=>active!==15||!x.barcode),rows=tasnifFiltered(all);const query=JSON.stringify([document.getElementById('tasnifSearch')?.value,document.getElementById('tasnifFilter')?.value]);if(query!==tasnifDidoxQuery){tasnifDidoxPage=0;tasnifDidoxQuery=query}const pages=Math.max(1,Math.ceil(rows.length/300));tasnifDidoxPage=Math.min(tasnifDidoxPage,pages-1);const visible=rows.slice(tasnifDidoxPage*300,(tasnifDidoxPage+1)*300);
+ root.innerHTML='<div class="toolbar"><button type="button" class="primary" id="tasnifAutoBind">🔗 Soliq MXIKdan shtrix-kodlarni bog‘lash</button></div><div class="tasnif-stats"><span><b>'+all.length+'</b> mahsulot varianti</span><span><b>'+all.filter(x=>x.mxik).length+'</b> MXIK bor</span><span><b>'+all.filter(x=>x.effectiveBarcode).length+'</b> shtrix-kod bor</span><span><b>'+all.filter(x=>!x.effectiveBarcode).length+'</b> shtrix-kodsiz</span></div><div class="ehf-table-wrap"><table class="ehf-table tasnif-table"><thead><tr><th>№</th><th>Mahsulot nomi</th><th>MXIK</th><th>Shtrix-kod</th><th>Fakturalar soni</th><th>Kimning fakturasidan</th><th>Jami miqdor</th><th>Manba</th><th>Tekshirish</th></tr></thead><tbody>'+visible.map((x,i)=>'<tr><td>'+(tasnifDidoxPage*300+i+1)+'</td><td>'+esc(x.name)+'</td><td>'+esc(x.mxik||'—')+'</td><td>'+esc(x.effectiveBarcode||'—')+'</td><td>'+x.docs+'</td><td>'+esc((x.origins||[]).map(o=>(o.supplier||'Noma’lum ta’minotchi')+(o.supplierInn?' (STIR: '+o.supplierInn+')':'')+' · №'+(o.invoice||'—')+(o.date?' · '+o.date:'')).join('; ')||'—')+'</td><td>'+x.qty.toLocaleString('ru-RU')+'</td><td>'+esc(x.barcodeSource)+'</td><td><button type="button" data-tasnif-edit="'+i+'" title="Shtrix-kodni tuzatish" aria-label="Shtrix-kodni tuzatish" style="background:#fff1f2;color:#b91c1c;border:1px solid #fca5a5;border-radius:8px;padding:7px 11px;font-weight:700;cursor:pointer">❗</button></td></tr>').join('')+'</tbody></table></div><p class="muted">Topildi: '+rows.length+' ta  · Sahifa '+(tasnifDidoxPage+1)+' / '+pages+'. <button id="tdPrev">‹</button> <button id="tdNext">›</button> Soliqdan topilgan shtrix-kodlar lokal nomenklatura mosligi sifatida saqlanadi; asl Didox hujjati o‘zgarmaydi.</p>';document.getElementById('tdPrev').disabled=tasnifDidoxPage===0;document.getElementById('tdNext').disabled=tasnifDidoxPage>=pages-1;document.getElementById('tdPrev').onclick=()=>{tasnifDidoxPage--;tasnifDraw()};document.getElementById('tdNext').onclick=()=>{tasnifDidoxPage++;tasnifDraw()};document.getElementById('tasnifAutoBind').onclick=tasnifAutoBind;root.querySelectorAll('[data-tasnif-edit]').forEach(btn=>btn.onclick=()=>tasnifEditDidoxBarcode(visible[Number(btn.dataset.tasnifEdit)]));root.querySelectorAll('[data-barcode-row]').forEach(el=>el.onchange=async()=>{const x=visible[Number(el.dataset.barcodeRow)];if(!x||!el.value)return;tasnifMatches[JSON.stringify([x.name,x.mxik,x.barcode])]=el.value;try{await persistTasnifMatches()}catch(e){alert('Saqlanmadi: '+e.message);return}tasnifDraw()});
 }
 function tasnifExport(){
  const rows=[['№','Mahsulot nomi','MXIK','Shtrix-kod','Fakturalar soni','Faktura holatlari','Kimning fakturasidan','Jami miqdor','Manba'],...tasnifFiltered(tasnifResolveAll().filter(x=>active!==15||!x.barcode)).map((x,i)=>[i+1,x.name,x.mxik,x.effectiveBarcode,x.docs,(x.statuses||[]).join(', '),(x.origins||[]).map(o=>(o.supplier||'Noma’lum ta’minotchi')+' | STIR: '+o.supplierInn+' | Faktura №'+o.invoice+' | '+o.date+' | '+o.status).join('; '),x.qty,x.barcodeSource])];
