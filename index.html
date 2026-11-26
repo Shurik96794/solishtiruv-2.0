@@ -699,8 +699,25 @@ let tasnifMatchAutoDirty=false;
 // Format nazorati: asl Didox kodi saqlanadi, faqat 13 raqamli kod avtomatik qabul qilinadi.
 function tasnifBarcode13(value){return /^\d{13}$/.test(String(value??'').trim())}
 function tasnifSoliqValidCodes(mxik){return [...new Set((tasnifSoliqByMxik.get(tasnifNormCode(mxik))||[]).map(y=>String(y.barcode||'').trim()).filter(tasnifBarcode13))]}
+function tasnifSkuSafeKey(value){
+ return tasnifMatchNormalize(value).replace(/\b(?:smartfon|planshet|tablet|xiaomi(?=\s+(?:redmi|poco))|galaxy|gb|pct|eu|ru|global|color)\b/g,' ').replace(/\bgrey\b/g,'gray').replace(/\s+/g,' ').trim();
+}
+function tasnifSkuSafeIndex(){
+ const index=new Map();
+ for(const row of barcodeRows||[]){
+  const code=String(row.barcode||'').trim();
+  if(!tasnifBarcode13(code))continue;
+  for(const name of [row.sku,row.name]){
+   if(!name||tasnifIsKPrefixProduct(name))continue;
+   const key=JSON.stringify([tasnifDeviceType(name),tasnifSkuSafeKey(name)]);
+   if(!index.has(key))index.set(key,new Map());
+   index.get(key).set(code,{name:String(name),key:tasnifNameKey(name),codes:[code]});
+  }
+ }
+ return index;
+}
 function tasnifMatchRows(){
- const catalog=didoxBarcodeCatalog(),byName=didoxBarcodeNameIndex(),cache=new Map();
+ const catalog=didoxBarcodeCatalog(),byName=didoxBarcodeNameIndex(),cache=new Map(),skuIndex=tasnifSkuSafeIndex();
  const output=tasnifRows().filter(x=>{
   if(tasnifBarcode13(x.barcode))return false;
   // Didox kodi 13 xonadan qisqa bo‘lsa, asl kodni saqlagan holda tekshiruvga chiqaramiz.
@@ -711,6 +728,12 @@ function tasnifMatchRows(){
   const key=JSON.stringify([x.name,x.mxik,x.barcode]),nameKey=tasnifNameKey(x.name);
   const saved=tasnifMatches[key],savedName=typeof saved==='object'?saved?.uprName:'';
   const savedUpr=savedName?byName.get(tasnifNameKey(savedName)):null;
+  const skuMatches=skuIndex.get(JSON.stringify([tasnifDeviceType(x.name),tasnifSkuSafeKey(x.name)]));
+  if(!saved?.manual&&skuMatches?.size===1){
+   const item=[...skuMatches.values()][0],code=item.codes[0];
+   if(saved?.barcode!==code||savedName!==item.name){tasnifMatches[key]={uprName:item.name,barcode:code};tasnifMatchAutoDirty=true}
+   return {...x,key,uprStyleName:item.name,uprName:item.name,uprCodes:item.codes,effectiveBarcode:code,matchPercent:100,status:'matched',exact:true,auto:true};
+  }
   const exact=byName.get(nameKey)||byName.get(tasnifNameKey(tasnifUprStyleName(x.name)));
   if(!cache.has(nameKey)){
    // Aniq UPR nomi mavjud bo‘lsa taxminiy qidiruvga o'tmasdan shu nomning kodini olamiz.
