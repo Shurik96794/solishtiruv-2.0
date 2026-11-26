@@ -568,7 +568,7 @@ function tasnifUprStyleName(name){
  const cap=v=>v.replace(/\b[a-z]/g,c=>c.toUpperCase());
  const colorWords=['ocean cyan','reddish brown','midnight black','velvet grey','velvet gray','starry purple','awesome navy','awesome gray','awesome grey','awesome lilac','black','white','green','blue','gray','grey','gold','purple','cyan','brown','red'];
  const lower=raw.toLowerCase(),color=colorWords.find(v=>lower.includes(v))||'';
- return 'Смартфон '+cap(identity.brand)+' '+cap(identity.model)+' '+identity.memory+' GB'+(color?' '+cap(color):'');
+ return 'Смартфон '+(identity.brand==='redmi'?'Xiaomi Redmi':identity.brand==='poco'?'Xiaomi POCO':cap(identity.brand))+' '+cap(identity.model)+' '+identity.memory+' GB'+(color?' '+cap(color):'');
 }
 function tasnifProductTokens(v){
  return tasnifMatchNormalize(v).split(' ').filter(t=>t.length>1&&!['smartfon','smartphone','galaxy','kursi','divan','mm','gb','mchj','dual','card','sim'].includes(t));
@@ -594,7 +594,7 @@ function tasnifPrepareCatalog(catalog){
  }
  prepared={byToken,items};tasnifPreparedCatalogCache.set(catalog,prepared);return prepared;
 }
-function normalizedPhoneBrand(name){const m=tasnifMatchNormalize(name).match(/\b(samsung|honor|redmi|xiaomi|iphone|apple|infinix|tecno|oppo|vivo|realme|poco|huawei)\b/);return m?m[1]:''}
+function normalizedPhoneBrand(name){const n=tasnifMatchNormalize(name);const sub=n.match(/\b(redmi|poco)\b/);if(sub)return sub[1];const m=n.match(/\b(samsung|honor|redmi|xiaomi|iphone|apple|infinix|tecno|oppo|vivo|realme|poco|huawei)\b/);return m?m[1]:''}
 function tasnifPhoneIdentity(name){
  const raw=String(name||''),nfc=/без\s+(?:функции\s+)?nfc|no\s*nfc|without\s*nfc/i.test(raw)?'no':/\bnfc\b/i.test(raw)?'yes':'',region=raw.match(/\b(EU|RU|PCT|Global)\b/i)?.[0].toLowerCase()||'';
  const norm=tasnifMatchNormalize(raw.replace(/без\s+(?:функции\s+)?nfc|no\s*nfc|without\s*nfc|\bnfc\b/gi,' ')),brand=normalizedPhoneBrand(name),memory=tasnifMatchMemory(name),color=tasnifMatchColor(name);
