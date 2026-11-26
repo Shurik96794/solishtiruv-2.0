@@ -1,4 +1,5 @@
 """Local read-only report server, standard library only."""
+import access
 import os, sqlite3, secrets, hashlib, hmac, json, time, getpass
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
@@ -10,6 +11,8 @@ def db():
     c.execute('CREATE TABLE IF NOT EXISTS users (login TEXT PRIMARY KEY, salt TEXT, digest TEXT, role TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS report (id INTEGER PRIMARY KEY, data TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, login TEXT, expires INTEGER)')
+    access.initialize(c)
+    c.commit()
     return c
 def digest(p,s):
     return hashlib.pbkdf2_hmac('sha256',p.encode(),bytes.fromhex(s),600000).hex()
@@ -34,6 +37,13 @@ class Handler(BaseHTTPRequestHandler):
         ident=self.identity()
         if not ident:return self.reply(401,{'error':'Kirish kerak'})
         if p=='/api/me':return self.reply(200,{'login':ident[0],'role':ident[1]})
+        if p.startswith('/api/section/'):
+            try:
+                section=int(p.rsplit('/',1)[1])
+                with db() as c: result=access.read(c,ident,section)
+                return self.reply(200,result)
+            except PermissionError:return self.reply(403,{'error':'Ruxsat yo‘q'})
+            except ValueError:return self.reply(400,{'error':'Invalid section'})
         if p=='/api/report':
             with db() as c:r=c.execute('SELECT data FROM report WHERE id=1').fetchone()
             return self.reply(200,json.loads(r[0]) if r else [])
@@ -53,7 +63,19 @@ class Handler(BaseHTTPRequestHandler):
                 t=secrets.token_urlsafe(32);c.execute('INSERT INTO sessions VALUES (?,?,?)',(t,d['login'],int(time.time())+28800))
             return self.reply(200,{'ok':True},cookie='sid='+t+'; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800')
         ident=self.identity()
+        if p.startswith('/api/section/'):
+            try:
+                section=int(p.rsplit('/',1)[1])
+                with db() as c: revision=access.write(c,ident,section,d['revision'],d['data'])
+                return self.reply(200,{'revision':revision})
+            except PermissionError:return self.reply(403,{'error':'Ruxsat yo‘q'})
+            except (ValueError,KeyError,TypeError):return self.reply(409,{'error':'Invalid data or revision conflict'})
         if not ident or ident[1]!='admin':return self.reply(403,{'error':'Ruxsat yo‘q'})
+        if p=='/api/access':
+            try:
+                with db() as c: access.grant(c,ident,str(d['login']),int(d['section']),d.get('mode'))
+                return self.reply(200,{'ok':True})
+            except (ValueError,KeyError,TypeError):return self.reply(400,{'error':'Invalid permission'})
         if p=='/api/users':
             try:
                 login=str(d['login']).strip();pw=str(d['password'])
