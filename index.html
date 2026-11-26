@@ -720,11 +720,12 @@ function tasnifNomenclatureUprName(name){
  const raw=String(name||'').trim().replace(/^\d+\s+(?=смартфон|планшет|smartphone|tablet)/i,'').replace(/\)\s*(EU|RU|PCT)\b/gi,') $1'),brand=normalizedPhoneBrand(raw);
  if(!brand)return raw.replace(/^\d{4,}\s+(?=\D)/,'').replace(/\s+/g,' ').trim();
  const m=raw.match(/\b(\d{1,2})\s*(?:GB|G)?\s*[+/]\s*(\d{1,4})\s*(GB|TB|G)?\b/i);
- if(!m)return tasnifUprStyleName(raw);
+ if(!m)return String(name||'').trim();
  const before=raw.slice(0,m.index).replace(/^(?:смартфон|планшет|smartphone|tablet)\s+/i,'').replace(/\(\s*без\s+функции\s+NFC\s*\)/gi,' ').replace(/\b(?:EU|RU|PCT|Global)\b/gi,' ').replace(/\s+/g,' ').trim();
  let model=before.replace(/^(?:Xiaomi\s+)?(?:Redmi|Poco)\b/i,v=>/poco/i.test(v)?'Xiaomi POCO':'Xiaomi Redmi');
  if(tasnifDeviceType(raw)==='tablet')model=model.replace(/^Xiaomi\s+(?=Redmi\b)/i,'');
- const color=raw.slice(m.index+m[0].length).replace(/\(\s*(?:с сим картой|модель[^)]*)\)/gi,' ').replace(/\b(?:EU|RU|PCT|Global|Color)\b/gi,' ').replace(/\s+/g,' ').trim();
+ const color=raw.slice(m.index+m[0].length).replace(/(?:^|\s)модель\s*[:№]?\s*.*$/iu,' ').replace(/https?:\/\/\S+/gi,' ').replace(/\(\s*(?:с сим картой|модель[^)]*)\)/gi,' ').replace(/\b(?:EU|RU|PCT|Global|Color)\b/gi,' ').replace(/\s+/g,' ').trim();
+ if(!color||!model||!/[\p{L}]/u.test(color))return String(name||'').trim();
  return (tasnifDeviceType(raw)==='tablet'?'Планшет ':'Смартфон ')+model+' '+m[1]+'/'+m[2]+' '+(/tb/i.test(m[3]||'')?'TB':'GB')+(color?' '+color.replace(/\b\w+/g,w=>w[0].toUpperCase()+w.slice(1).toLowerCase()):'');
 }
 function tasnifMatchRows(){
@@ -740,6 +741,7 @@ function tasnifMatchRows(){
   const saved=tasnifMatches[key],savedName=typeof saved==='object'?saved?.uprName:'';
   const savedUpr=savedName?byName.get(tasnifNameKey(savedName)):null;
   const uprStandardName=tasnifNomenclatureUprName(x.name);
+  if(!saved?.manual&&normalizedPhoneBrand(x.name)&&uprStandardName===String(x.name||'').trim())return {...x,key,uprStyleName:uprStandardName,uprName:'',uprCodes:[],effectiveBarcode:'',matchPercent:null,status:'missing',exact:false,auto:false};
   const skuMatches=skuIndex.get(JSON.stringify([tasnifDeviceType(uprStandardName),tasnifSkuSafeKey(uprStandardName)]))||skuIndex.get(JSON.stringify([tasnifDeviceType(x.name),tasnifSkuSafeKey(x.name)]));
   const catalogExact=byName.get(tasnifNameKey(uprStandardName));
   if(!saved?.manual&&skuMatches?.size>1){
