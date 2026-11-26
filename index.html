@@ -596,11 +596,12 @@ function tasnifPrepareCatalog(catalog){
 }
 function normalizedPhoneBrand(name){const m=tasnifMatchNormalize(name).match(/\b(samsung|honor|redmi|xiaomi|iphone|apple|infinix|tecno|oppo|vivo|realme|poco|huawei)\b/);return m?m[1]:''}
 function tasnifPhoneIdentity(name){
- const norm=tasnifMatchNormalize(name),brand=normalizedPhoneBrand(name),memory=tasnifMatchMemory(name),color=tasnifMatchColor(name);
+ const raw=String(name||''),nfc=/без\s+(?:функции\s+)?nfc|no\s*nfc|without\s*nfc/i.test(raw)?'no':/\bnfc\b/i.test(raw)?'yes':'',region=raw.match(/\b(EU|RU|PCT|Global)\b/i)?.[0].toLowerCase()||'';
+ const norm=tasnifMatchNormalize(raw.replace(/без\s+(?:функции\s+)?nfc|no\s*nfc|without\s*nfc|\bnfc\b/gi,' ')),brand=normalizedPhoneBrand(name),memory=tasnifMatchMemory(name),color=tasnifMatchColor(name);
  if(!brand||!memory)return null;
  const tokens=norm.split(' '),i=tokens.indexOf(brand);
  if(i<0)return null;
- const stop=new Set(['black','white','green','blue','gray','grey','brown','cyan','purple','red','gold','ocean','reddish','midnight','velvet','starry','awesome','navy','lilac','silver','pink','dual','card','smartfon','gb','pct','ru','eu']);
+ const stop=new Set(['black','white','green','blue','gray','grey','brown','cyan','purple','red','gold','ice','ocean','reddish','midnight','velvet','starry','awesome','navy','lilac','silver','pink','dual','card','smartfon','gb','pct','ru','eu']);
  const model=[];
  for(const t of tokens.slice(i+1)){
   if(t===memory||stop.has(t))break;
@@ -609,7 +610,7 @@ function tasnifPhoneIdentity(name){
   model.push(t);
  }
  if(!model.length||!model.some(t=>/\d/.test(t)))return null;
- return {brand,model:model.join(' '),memory,color};
+ return {brand,model:model.join(' '),memory,color,nfc,region};
 }
 const phoneCatalogIndex=new WeakMap();
 function tasnifPhoneCandidate(name,catalog){
@@ -619,13 +620,14 @@ function tasnifPhoneCandidate(name,catalog){
  for(const {item,target} of index.get(JSON.stringify([source.brand,source.model,source.memory]))||[]){
   if(!target||source.brand!==target.brand||source.model!==target.model||source.memory!==target.memory)continue;
   if(source.color&&target.color!==source.color)continue;
+  if(source.nfc&&target.nfc&&source.nfc!==target.nfc||source.region&&target.region&&source.region!==target.region)continue;
   const score=source.color&&target.color?1:0.85;
   found.push({item,score});
  }
  // Bir xil mahsulot turli UPR satrlarida bo‘lishi mumkin: faqat yagona nom+kod tasdiqlanadi.
  const unique=new Map();
  for(const result of found){
-  const key=result.item.key+'|'+result.item.codes.slice().sort().join(',');
+  const key=result.item.codes.length===1?result.item.codes[0]:result.item.key+'|'+result.item.codes.slice().sort().join(',');
   if(!unique.has(key))unique.set(key,result);
  }
  const matches=[...unique.values()].sort((a,b)=>b.score-a.score);
@@ -835,31 +837,30 @@ function tasnifResolved(x,uprIndex,context){
  const saved=tasnifMatches[key],savedCode=typeof saved==='string'?saved:saved?.barcode;
  const savedName=typeof saved==='object'?saved?.uprName:'';
  const nameKey=tasnifNameKey(x.name);let chosen=(savedName&&byName.get(tasnifNameKey(savedName)))||byName.get(nameKey)||byName.get(tasnifNameKey(tasnifUprStyleName(x.name)));
- if(!chosen){if(context?.candidates?.has(nameKey))chosen=context.candidates.get(nameKey);else{chosen=tasnifPhoneCandidate(x.name,catalog)?.item||tasnifAutoUprCandidate(tasnifUprStyleName(x.name),catalog)||tasnifAutoUprCandidate(x.name,catalog);context?.candidates?.set(nameKey,chosen)}}
+ if(!chosen){if(context?.candidates?.has(nameKey))chosen=context.candidates.get(nameKey);else{chosen=tasnifPhoneCandidate(x.name,catalog)?.item||(!normalizedPhoneBrand(x.name)?tasnifBarcodeNameCandidate(x.name,catalog)?.item:null)||tasnifAutoUprCandidate(tasnifUprStyleName(x.name),catalog)||tasnifAutoUprCandidate(x.name,catalog);context?.candidates?.set(nameKey,chosen)}}
  const codes=chosen?.codes||[];
  const validSaved=!!savedCode&&(saved?.manual||soliqCodes.includes(savedCode)||codes.includes(savedCode));
- const verified=tasnifPhoneCandidate(x.name,catalog);const exactNormalized=chosen?.key===tasnifNameKey(tasnifUprStyleName(x.name));const verifiedBarcode=codes.length===1&&(exactNormalized||verified?.item?.key===chosen?.key&&verified?.score>=0.8)?codes[0]:'';
- const code=tasnifBarcode13(x.barcode)?x.barcode:(saved?.manual&&tasnifBarcode13(savedCode)?savedCode:soliqCodes.length===1?soliqCodes[0]:soliqCodes.length>1?'':validSaved&&tasnifBarcode13(savedCode)?savedCode:tasnifBarcode13(verifiedBarcode)?verifiedBarcode:'');
+ const verified=tasnifPhoneCandidate(x.name,catalog)||(!normalizedPhoneBrand(x.name)?tasnifBarcodeNameCandidate(x.name,catalog):null);const exactNormalized=chosen?.key===tasnifNameKey(tasnifUprStyleName(x.name));const verifiedBarcode=codes.length===1&&(exactNormalized||verified?.item?.key===chosen?.key&&verified?.score>=0.8)?codes[0]:'';
+ const code=tasnifBarcode13(x.barcode)?x.barcode:(saved?.manual&&tasnifBarcode13(savedCode)?savedCode:soliqCodes.length===1?soliqCodes[0]:soliqCodes.length>1?(soliqCodes.includes(verifiedBarcode)?verifiedBarcode:''):validSaved&&tasnifBarcode13(savedCode)?savedCode:tasnifBarcode13(verifiedBarcode)?verifiedBarcode:'');
  const source=tasnifBarcode13(x.barcode)?'Didox':saved?.manual&&savedCode?'Qo‘lda kiritilgan':soliqCodes.length===1?'Soliq MXIK':code?'UPR nomi → Shtrix-kod':chosen?'UPR nomi bog‘landi, kod yo‘q':'Topilmadi';
- if(!saved?.manual&&!tasnifBarcode13(x.barcode)&&soliqCodes.length===0&&chosen&&(!savedName||verifiedBarcode&&!validSaved)){
+ if(!saved?.manual&&!tasnifBarcode13(x.barcode)&&(soliqCodes.length===0||soliqCodes.includes(verifiedBarcode))&&chosen&&(!savedName||verifiedBarcode&&!validSaved)){
   tasnifMatches[key]={barcode:verifiedBarcode||'',uprName:chosen.name};
   queueTasnifSave()
  }
  return {...x,uprName:chosen?.name||'',effectiveBarcode:code,barcodeSource:source};
 }
 async function tasnifAutoBind(){
- const rows=tasnifRows();let added=0,existing=0,ambiguous=0,missing=0;
+ const rows=tasnifRows(),catalog=tasnifUprCatalog(),context={catalog,byName:new Map(catalog.map(x=>[x.key,x])),candidates:new Map()};let added=0,existing=0,ambiguous=0,missing=0;
  for(const x of rows){
   if(tasnifBarcode13(x.barcode)){existing++;continue}
   const key=JSON.stringify([x.name,x.mxik,x.barcode]);
   const codes=tasnifSoliqValidCodes(x.mxik);
-  if(codes.length===1){if(tasnifMatches[key]!==codes[0]){tasnifMatches[key]=codes[0];added++}}
-  else if(codes.length>1)ambiguous++;else missing++;
+  if(tasnifMatches[key]?.manual){existing++;continue}const resolved=tasnifResolved(x,null,context);if(tasnifBarcode13(resolved.effectiveBarcode)){tasnifMatches[key]={barcode:resolved.effectiveBarcode,uprName:resolved.uprName};added++}else if(codes.length>1)ambiguous++;else missing++;
  }
  try{await persistTasnifMatches()}
  catch(e){alert('Mosliklarni saqlab bo‘lmadi: '+e.message);return}
  tasnifDraw();
- alert('Soliq MXIK bo‘yicha bog‘landi: '+added+' ta. Didoxda kodi bor: '+existing+' ta. Tanlash kerak: '+ambiguous+' ta. Topilmadi: '+missing+' ta.');
+ alert('Soliq va UPR spravochnigi bo‘yicha bog‘landi: '+added+' ta. Didoxda kodi bor: '+existing+' ta. Tanlash kerak: '+ambiguous+' ta. Topilmadi: '+missing+' ta.');
 }
 function tasnifFiltered(precomputed){
  const q=(document.getElementById('tasnifSearch')?.value||'').toLocaleLowerCase().trim(),filter=document.getElementById('tasnifFilter')?.value||'all';
