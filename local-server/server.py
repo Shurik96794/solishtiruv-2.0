@@ -36,6 +36,14 @@ class Handler(BaseHTTPRequestHandler):
         if p=='/':return self.reply(200,(ROOT/'viewer.html').read_text(encoding='utf-8'),'text/html')
         ident=self.identity()
         if not ident:return self.reply(401,{'error':'Kirish kerak'})
+        if p=='/api/access':
+            with db() as c:
+                if ident[1]=='admin':
+                    rows=c.execute("SELECT login,role FROM users ORDER BY login").fetchall()
+                    grants=c.execute("SELECT login,section,mode FROM section_access").fetchall()
+                    return self.reply(200,{'users':[{'login':u,'role':r} for u,r in rows],'grants':[{'login':u,'section':i,'mode':m} for u,i,m in grants]})
+                grants=c.execute("SELECT section,mode FROM section_access WHERE login=?",(ident[0],)).fetchall()
+                return self.reply(200,{'grants':[{'section':i,'mode':m} for i,m in grants]})
         if p=='/api/me':return self.reply(200,{'login':ident[0],'role':ident[1]})
         if p.startswith('/api/section/'):
             try:
