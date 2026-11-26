@@ -716,6 +716,16 @@ function tasnifSkuSafeIndex(){
  }
  return index;
 }
+function tasnifNomenclatureUprName(name){
+ const raw=String(name||'').trim(),brand=normalizedPhoneBrand(raw);
+ if(!brand)return tasnifUprStyleName(raw);
+ const m=raw.match(/\b(\d{1,2})\s*(?:GB|G)?\s*[+/]\s*(\d{1,4})\s*(GB|TB|G)?\b/i);
+ if(!m)return tasnifUprStyleName(raw);
+ const before=raw.slice(0,m.index).replace(/^(?:смартфон|планшет|smartphone|tablet)\s+/i,'').replace(/\b(?:EU|RU|PCT|Global)\b/gi,' ').replace(/\s+/g,' ').trim();
+ const model=before.replace(/^(?:Xiaomi\s+)?(?:Redmi|Poco)\b/i,v=>/poco/i.test(v)?'Xiaomi POCO':'Xiaomi Redmi');
+ const color=raw.slice(m.index+m[0].length).replace(/\b(?:EU|RU|PCT|Global|Color)\b/gi,' ').replace(/\s+/g,' ').trim();
+ return (tasnifDeviceType(raw)==='tablet'?'Планшет ':'Смартфон ')+model+' '+m[1]+'/'+m[2]+' '+(/tb/i.test(m[3]||'')?'TB':'GB')+(color?' '+color:'');
+}
 function tasnifMatchRows(){
  const catalog=didoxBarcodeCatalog(),byName=didoxBarcodeNameIndex(),cache=new Map(),skuIndex=tasnifSkuSafeIndex();
  const output=tasnifRows().filter(x=>{
@@ -732,14 +742,14 @@ function tasnifMatchRows(){
   if(!saved?.manual&&skuMatches?.size===1){
    const item=[...skuMatches.values()][0],code=item.codes[0];
    if(saved?.barcode!==code||savedName!==item.name){tasnifMatches[key]={uprName:item.name,barcode:code};tasnifMatchAutoDirty=true}
-   return {...x,key,uprStyleName:item.name,uprName:item.name,uprCodes:item.codes,effectiveBarcode:code,matchPercent:100,status:'matched',exact:true,auto:true};
+   return {...x,key,uprStyleName:tasnifNomenclatureUprName(x.name),uprName:item.name,uprCodes:item.codes,effectiveBarcode:code,matchPercent:100,status:'matched',exact:true,auto:true};
   }
-  const exact=byName.get(nameKey)||byName.get(tasnifNameKey(tasnifUprStyleName(x.name)));
+  const exact=byName.get(nameKey)||byName.get(tasnifNameKey(tasnifNomenclatureUprName(x.name)));
   if(!cache.has(nameKey)){
    // Aniq UPR nomi mavjud bo‘lsa taxminiy qidiruvga o'tmasdan shu nomning kodini olamiz.
    if(exact)cache.set(nameKey,{barcode:null,name:exact});
    else{
-    const normalizedName=tasnifUprStyleName(x.name),phone=tasnifPhoneCandidate(x.name,catalog);
+    const normalizedName=tasnifNomenclatureUprName(x.name),phone=tasnifPhoneCandidate(x.name,catalog);
     cache.set(nameKey,{barcode:phone?.item?.codes?.length===1?{...phone,barcode:phone.item.codes[0]}:tasnifBarcodeNameCandidate(normalizedName,catalog)||tasnifBarcodeNameCandidate(x.name,catalog),name:phone?.item||tasnifAutoUprCandidate(normalizedName,catalog)||tasnifAutoUprCandidate(x.name,catalog)});
    }
   }
@@ -755,7 +765,7 @@ function tasnifMatchRows(){
    tasnifMatches[key]={...(typeof saved==='object'&&saved?saved:{}),uprName:chosen.name,...(safeBarcode?{barcode:safeBarcode}:{})};
    tasnifMatchAutoDirty=true;
   }
-  return {...x,key,uprStyleName:tasnifUprStyleName(x.name),uprName:chosen?.name||'',uprCodes:chosen?.codes||[],effectiveBarcode:safeBarcode,matchPercent:found.barcode&&found.barcode.item?.key===chosen?.key?Math.round(found.barcode.score*100):null,status:safeBarcode?'matched':chosen?'manual':'missing',exact:!!exact,auto:!!chosen&&!savedUpr&&!exact};
+  return {...x,key,uprStyleName:tasnifNomenclatureUprName(x.name),uprName:chosen?.name||'',uprCodes:chosen?.codes||[],effectiveBarcode:safeBarcode,matchPercent:found.barcode&&found.barcode.item?.key===chosen?.key?Math.round(found.barcode.score*100):null,status:safeBarcode?'matched':chosen?'manual':'missing',exact:!!exact,auto:!!chosen&&!savedUpr&&!exact};
  });
  if(tasnifMatchAutoDirty){queueTasnifSave();tasnifMatchAutoDirty=false}
  // Shtrix-kodi ishonchli biriktirilgan mahsulot ishchi ro‘yxatda qolmasin.
