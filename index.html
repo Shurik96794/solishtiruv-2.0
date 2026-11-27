@@ -413,7 +413,8 @@ const uprStockHeaders=['Filial','Tovar ID','Tovar Variant nomi','Serenka','Kirim
 const uprStockNorm=v=>String(v??'').trim().toLowerCase().replace(/[’‘ʻʼ']/g,"'").replace(/\s+/g,' ');
 async function uprStockStorage(rows){const db=await balanceDB();try{return await new Promise((ok,no)=>{const tx=db.transaction('data',rows===undefined?'readonly':'readwrite'),st=tx.objectStore('data'),r=rows===undefined?st.get('uprStockRows'):st.put(rows,'uprStockRows');tx.oncomplete=()=>ok(rows===undefined?(r.result||[]):rows);tx.onerror=()=>no(tx.error);tx.onabort=()=>no(tx.error)})}finally{db.close()}}
 function uprStockPageHtml(){return '<div class="panel onec-workspace"><div class="toolbar"><label class="supplier-upload-button" for="uprStockExcel">▤ Excel yuklash</label><input type="file" id="uprStockExcel" accept=".xlsx,.xls" class="supplier-visually-hidden"><input id="uprStockSearch" placeholder="Barcha ma’lumotlar bo‘yicha qidirish..." style="flex:1;min-width:240px"><select id="uprStockStore"><option value="">Barcha filiallar</option></select><select id="uprStockCompany"><option value="">Barcha MCHJlar</option></select></div><p id="uprStockStatus" class="muted"></p><div id="uprStockResults"></div></div>'}
-function uprStockEnriched(){const stores=new Map(),codes=new Map();for(const x of storeCompanyRows()){const k=uprStockNorm(x.storeName);if(!stores.has(k))stores.set(k,new Map());if(x.inn)stores.get(k).set(String(x.inn),String(x.company||''))}for(const x of barcodeRows){const k=String(x.tovarId??'').trim(),c=String(x.barcode||'').trim();if(!k||!/^\d{13}$/.test(c))continue;if(!codes.has(k))codes.set(k,new Set());codes.get(k).add(c)}return uprStockRows.map(r=>{const m=stores.get(uprStockNorm(r[0])),c=codes.get(r[1]),pair=m?.size===1?[...m][0]:['',m?.size>1?'Tekshirish kerak':''];return [...r,pair[1],pair[0],c?.size===1?[...c][0]:c?.size>1?'Tekshirish kerak':'',r[4]*r[7]]})}
+function uprStockSplitSerials(r){const serials=String(r[3]??'').split(/[,;\r\n]+/).map(v=>v.trim()).filter(Boolean),qty=Number(r[7]);if(serials.length<=1||new Set(serials).size!==serials.length||!Number.isInteger(qty)||qty<serials.length)return [r];const out=serials.map(serial=>{const row=r.slice();row[3]=serial;row[7]=1;return row});if(qty>serials.length){const row=r.slice();row[3]='';row[7]=qty-serials.length;out.push(row)}return out}
+function uprStockEnriched(){const stores=new Map(),codes=new Map();for(const x of storeCompanyRows()){const k=uprStockNorm(x.storeName);if(!stores.has(k))stores.set(k,new Map());if(x.inn)stores.get(k).set(String(x.inn),String(x.company||''))}for(const x of barcodeRows){const k=String(x.tovarId??'').trim(),c=String(x.barcode||'').trim();if(!k||!/^\d{13}$/.test(c))continue;if(!codes.has(k))codes.set(k,new Set());codes.get(k).add(c)}return uprStockRows.flatMap(uprStockSplitSerials).map(r=>{const m=stores.get(uprStockNorm(r[0])),c=codes.get(r[1]),pair=m?.size===1?[...m][0]:['',m?.size>1?'Tekshirish kerak':''];return [...r,pair[1],pair[0],c?.size===1?[...c][0]:c?.size>1?'Tekshirish kerak':'',r[4]*r[7]]})}
 let uprStockView=[],uprStockSearchIndex=new WeakMap();
 const stockNumberFormatter=new Intl.NumberFormat('uz-UZ',{maximumFractionDigits:3});
 function uprStockSearchFields(r){let fields=uprStockSearchIndex.get(r);if(!fields){fields=r.map(uprStockNorm);uprStockSearchIndex.set(r,fields)}return fields}
@@ -1101,10 +1102,11 @@ function ehfUprCompare(d){
  const storeLinks=invoiceStoreLinks(d);
  const buyerStores=new Set(storeLinks.flatMap(x=>[normStore(x.storeName),normStore(x.storeId)]).filter(Boolean));
  const hasStoreMap=true;
+ const knownIds=new Set(allStoreLinks.map(r=>normStore(r.storeId))),branchIds=new Set(storeLinks.map(r=>normStore(r.storeId))),branchNames=new Set(storeLinks.map(r=>normStore(r.storeName)));
  const related=buyerStores.size&&linked.length?uprSupplierReceiptCandidates(supplierNames,supplierMainIds).filter(x=>{
   const id=normStore(x.storeId),name=normStore(x.store);
-  if(id&&allStoreLinks.some(r=>normStore(r.storeId)===id))return storeLinks.some(r=>normStore(r.storeId)===id);
-  return !!name&&storeLinks.some(r=>normStore(r.storeName)===name);
+  if(id&&knownIds.has(id))return branchIds.has(id);
+  return !!name&&branchNames.has(name);
  }):[];
  const expectedRaw=(d.lines||[]).map(l=>({
   name:String(l.nm||'').trim(),
