@@ -428,7 +428,8 @@ async function uprStockStorage(rows){const db=await balanceDB();try{return await
 function uprStockPageHtml(){return '<div class="panel onec-workspace"><div class="toolbar"><label class="supplier-upload-button" for="uprStockExcel">▤ Excel yuklash</label><input type="file" id="uprStockExcel" accept=".xlsx,.xls" class="supplier-visually-hidden"><input id="uprStockSearch" placeholder="Barcha ma’lumotlar bo‘yicha qidirish..." style="flex:1;min-width:240px"><select id="uprStockStore"><option value="">Barcha filiallar</option></select><select id="uprStockCompany"><option value="">Barcha MCHJlar</option></select><details class="upr-stock-suppliers" id="uprStockSuppliers"><summary id="uprStockSupplierLabel">Ta’minotchilar (barchasi)</summary><div class="upr-stock-supplier-menu"><input id="uprStockSupplierSearch" placeholder="Ta’minotchi qidirish..."><div id="uprStockSupplierList"></div><button type="button" class="secondary" id="uprStockSupplierClear">Filtrni tozalash</button></div></details></div><p id="uprStockStatus" class="muted"></p><div id="uprStockResults"></div></div>'}
 function uprStockSplitSerials(r){const serials=String(r[3]??'').split(/[,;\r\n]+/).map(v=>v.trim()).filter(Boolean),qty=Number(r[7]);if(serials.length<=1||new Set(serials).size!==serials.length||!Number.isInteger(qty)||qty<serials.length)return [r];const out=serials.map(serial=>{const row=r.slice();row[3]=serial;row[7]=1;return row});if(qty>serials.length){const row=r.slice();row[3]='';row[7]=qty-serials.length;out.push(row)}return out}
 const uprStockBranchKey=v=>uprStockNorm(v).normalize('NFKC').replace(/[’‘ʻʼ']/g,'').replace(/[–—-]/g,' ').replace(/\b(filiali|filial|dokoni|dokon)\b/g,' ').replace(/\s+/g,' ').trim();
-function uprStockEnriched(){const stores=new Map(),codes=new Map();for(const x of storeCompanyRows()){const k=uprStockBranchKey(x.storeName);if(!stores.has(k))stores.set(k,new Map());if(x.inn)stores.get(k).set(String(x.inn).replace(/\D/g,''),String(x.company||''))}for(const x of barcodeRows){const k=String(x.tovarId??'').trim(),c=String(x.barcode||'').trim();if(!k||!/^\d{13}$/.test(c))continue;if(!codes.has(k))codes.set(k,new Set());codes.get(k).add(c)}return uprStockRows.flatMap(uprStockSplitSerials).map(r=>{const m=stores.get(uprStockBranchKey(r[0])),c=codes.get(r[1]),pair=uprStockBranchKey(r[0])==='yangiyer'?['308060664','Makro Network Sail']:m?.size===1?[...m][0]:['',m?.size>1?'Tekshirish kerak':'MCHJ biriktirilmagan'];return [...r,pair[1],pair[0],c?.size===1?[...c][0]:c?.size>1?'Tekshirish kerak':'',r[4]*r[7]]})}
+function uprStockResolveCompany(rows){const valid=(rows||[]).filter(x=>/^\d{9}$/.test(String(x.inn).replace(/\D/g,'')));const primary=valid.filter(x=>x.stockPrimary===true);const candidates=primary.length?primary:valid;const unique=new Map(candidates.map(x=>[String(x.inn).replace(/\D/g,''),String(x.company||'')]));return unique.size===1?[...unique][0]:['',unique.size>1?'Asosiy MCHJni tanlang':'MCHJ biriktirilmagan']}
+function uprStockEnriched(){const stores=new Map(),codes=new Map();for(const x of storeCompanyRows()){const k=uprStockBranchKey(x.storeName);if(!stores.has(k))stores.set(k,[]);if(x.inn)stores.get(k).push(x)}for(const x of barcodeRows){const k=String(x.tovarId??'').trim(),c=String(x.barcode||'').trim();if(!k||!/^\d{13}$/.test(c))continue;if(!codes.has(k))codes.set(k,new Set());codes.get(k).add(c)}return uprStockRows.flatMap(uprStockSplitSerials).map(r=>{const m=stores.get(uprStockBranchKey(r[0])),c=codes.get(r[1]),pair=uprStockBranchKey(r[0])==='yangiyer'?['308060664','Makro Network Sail']:uprStockResolveCompany(m);return [...r,pair[1],pair[0],c?.size===1?[...c][0]:c?.size>1?'Tekshirish kerak':'',r[4]*r[7]]})}
 let uprStockView=[],uprStockSearchIndex=new WeakMap();
 const stockNumberFormatter=new Intl.NumberFormat('uz-UZ',{maximumFractionDigits:3});
 function uprStockSearchFields(r){let fields=uprStockSearchIndex.get(r);if(!fields){fields=r.map(uprStockNorm);uprStockSearchIndex.set(r,fields)}return fields}
@@ -2222,6 +2223,7 @@ function editStoreCompany(key){
  '<label>MCHJ nomi<input name="company" required value="'+esc(current?.company||'')+'"></label>'+
  '<label>STIR<input name="inn" required value="'+esc(current?.inn||'')+'" inputmode="numeric"></label>'+
  '<label>Faoliyat turi</label><div class="sc-activity-line"><input name="type" list="scActivitySuggestions" required value="'+esc(current?.type||'')+'" placeholder="Faoliyat turini tanlang"><button type="button" id="scNewActivity" class="secondary">＋ Yangi faoliyat turi</button></div><datalist id="scActivitySuggestions">'+typeOptions+'</datalist>'+ 
+ '<label style="display:flex;align-items:center;gap:8px"><input type="checkbox" name="stockPrimary" style="width:auto" '+(current?.stockPrimary?'checked':'')+'> Tovar qoldig‘i uchun asosiy MCHJ</label>'+
  '<p class="muted sc-dialog-note">Yangi faoliyat turini yozsangiz, u avtomatik spravochnikga qo‘shiladi. Do‘kon nomini ham shu yerda kiritish yoki o‘zgartirish mumkin.</p>'+
  '<div class="sc-dialog-actions"><button type="button" id="scEditCancel" class="secondary">Bekor qilish</button><button type="submit">Saqlash</button></div></form>';
  document.body.appendChild(dlg);
@@ -2242,10 +2244,10 @@ function editStoreCompany(key){
  e.preventDefault();const fd=new FormData(e.currentTarget);
  const row={storeId:String(fd.get('storeId')||'').trim(),storeName:String(fd.get('storeName')||'').trim(),company:String(fd.get('company')||'').trim(),inn:String(fd.get('inn')||'').trim(),type:String(fd.get('type')||'').trim()};
  if(Object.values(row).some(v=>!v)){alert('Barcha maydonlarni to‘ldiring');return}
- const rows=storeCompanyRows(),newKey=storeCompanyKey(row);
+ row.stockPrimary=fd.has('stockPrimary');const rows=storeCompanyRows(),newKey=storeCompanyKey(row);
  if(rows.some(x=>storeCompanyKey(x)===newKey&&storeCompanyKey(x)!==key)){alert('Bunday bog‘lanish mavjud');return}
  const previousRows=records.storeCompanies,previousTypes=records.activityTypes;
- records.storeCompanies=key?rows.map(x=>storeCompanyKey(x)===key?row:x):[...rows,row];
+ const base=rows.map(x=>row.stockPrimary&&uprStockBranchKey(x.storeName)===uprStockBranchKey(row.storeName)?{...x,stockPrimary:false}:x);records.storeCompanies=key?base.map(x=>storeCompanyKey(x)===key?row:x):[...base,row];
  if(!storeCompanyActivities().some(t=>t.toLocaleLowerCase()===row.type.toLocaleLowerCase()))records.activityTypes=[...storeCompanyActivities(),row.type];
  try{save();storeCompanyNotice='Bog‘lanish saqlandi.';close();drawStoreCompanyTable()}catch(err){records.storeCompanies=previousRows;records.activityTypes=previousTypes;alert('Saqlash xatosi: '+err.message)}
  };
@@ -2273,7 +2275,7 @@ async function importStoreCompanyExcel(e){
  if(!matched)throw Error('OrganizationId, OrganizationName, MCHJ, INN, Type sarlavhalari topilmadi');
  if(!incoming.length)throw Error('Yaroqli bog‘lanish qatorlari topilmadi');
  const current=storeCompanyRows(),map=new Map(current.map(x=>[storeCompanyKey(x),x]));let added=0,updated=0;
- for(const row of incoming){const key=storeCompanyKey(row);if(map.has(key))updated++;else added++;map.set(key,row)}
+ for(const row of incoming){const key=storeCompanyKey(row);if(map.has(key))updated++;else added++;map.set(key,{...map.get(key),...row})}
  const types=storeCompanyActivities(),typeMap=new Map(types.map(t=>[t.toLocaleLowerCase(),t]));for(const row of incoming)if(!typeMap.has(row.type.toLocaleLowerCase()))typeMap.set(row.type.toLocaleLowerCase(),row.type);
  records.storeCompanies=[...map.values()];records.activityTypes=[...typeMap.values()];
  try{save()}catch(err){records.storeCompanies=current;records.activityTypes=types;throw Error('Brauzer xotirasida joy yetarli emas: '+err.message)}
