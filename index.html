@@ -1084,7 +1084,7 @@ function invoiceStoreLinks(d){
  const distinct=new Map(mappedStores.map(x=>[storeToken(x.storeName)||String(x.storeId||''),x]));
  const named=[...distinct.keys()].filter(n=>n&&(explicit?explicit===n:invoiceText.includes(n)));
  const selectedStore=named.length===1?named[0]:!explicit&&named.length===0&&distinct.size===1?[...distinct.keys()][0]:'';
- const storeLinks=selectedStore?mappedStores.filter(x=>(storeToken(x.storeName)||String(x.storeId||''))===selectedStore):[];
+ const storeLinks=selectedStore?mappedStores.filter(x=>(storeToken(x.storeName)||String(x.storeId||''))===selectedStore):!explicit&&named.length===0?mappedStores:[];
 
  return storeLinks;
 }
@@ -1167,13 +1167,13 @@ function ehfUprCompare(d){
    const options=eligible.filter(r=>uprCode(r)===e.code&&Number(r.qty)>0).sort((a,b)=>gap(a)-gap(b));
    const within=options.filter(r=>gap(r)<=30);
    const pool=within;
-   const exact=pool.filter(r=>Math.abs(Number(r.qty)-e.qty)<0.000001);
+   const qtyMatches=pool.filter(r=>Math.abs(Number(r.qty)-e.qty)<0.000001);const amountMatches=qtyMatches.filter(r=>Math.abs(Number(r.qty)*Number(r.price)-e.total)<=0.01);const exact=amountMatches.length?amountMatches:qtyMatches;
    if(exact.length===1){selected.push(exact[0]);if(gap(exact[0])>7)warnings.push('sana');continue}
    if(exact.length>1){
     // Bir xil shtrix-kod va miqdordagi kirimlar orasida sanasi eng yaqin
     // yagona bo‘lsa tanlanadi; boshqa kirimlarni taxminan qo‘shmaymiz.
     const sorted=exact.slice().sort((a,b)=>gap(a)-gap(b));
-    if(gap(sorted[0])<gap(sorted[1])){
+    if(gap(sorted[0])<gap(sorted[1])&&normStore(sorted[0].store)===normStore(sorted[1].store)){
      selected.push(sorted[0]);if(gap(sorted[0])>7)warnings.push('sana');
     }else warnings.push('takroriy kirim');
     continue;
@@ -1185,7 +1185,7 @@ function ehfUprCompare(d){
     if(qty<=remaining+0.000001){picked.push(r);remaining-=qty}
     if(Math.abs(remaining)<0.000001)break;
    }
-   if(Math.abs(remaining)<0.000001&&picked.length){
+   if(Math.abs(remaining)<0.000001&&picked.length&&new Set(picked.map(r=>normStore(r.storeId||r.store))).size===1){
     selected.push(...picked);
     if(picked.some(r=>gap(r)>7))warnings.push('sana');
    }else if(pool.length){selected.push(...(picked.length?picked:[pool[0]]));warnings.push('miqdor yoki qisman kirim');}
@@ -1257,7 +1257,7 @@ function ehfUprCompare(d){
  const safe=candidates.filter(r=>good.has(uprCode(r))&&(!uprInvoiceNorm(uprInvoiceNumber(r))||uprInvoiceNorm(uprInvoiceNumber(r))===invoice)&&Math.abs(Date.parse(uprDateISO(r.date))-Date.parse(targetDate))<=30*86400000);
  const totals=new Map();for(const r of safe){const c=uprCode(r);totals.set(c,(totals.get(c)||0)+Number(r.qty))}
  const verified=safe.filter(r=>Math.abs((totals.get(uprCode(r))||0)-(expected.find(e=>e.code===uprCode(r))?.qty||0))<1e-6);
- if(verified.length)edoSaveComparison(d,verified);
+ if(verified.length&&!ambiguous)edoSaveComparison(d,verified);
 }
  return {linked:linked.length>0,linkedNames:linked.map(x=>x.name),uprCount:candidates.length,rows,matched,complete,reason,method,stores,dates,targetDate};
 }
