@@ -463,7 +463,16 @@ function oneCExport(){
 function tasnifRows(){
  const map=new Map();
  const sourceMap=new Map();
- for(const d of [...(Array.isArray(ehfDocs)?ehfDocs:[]),...(Array.isArray(dxDocs)?dxDocs:[])]){const id=JSON.stringify([ehfId(d),String(d.s_inn||'')]);const prev=sourceMap.get(id);if(!prev||(Array.isArray(d.lines)&&d.lines.length))sourceMap.set(id,d)}
+ for(const d of [...(Array.isArray(dxDocs)?dxDocs:[]),...(Array.isArray(ehfDocs)?ehfDocs:[])]){
+  const id=JSON.stringify([ehfId(d),String(d.s_inn||''),String(d.f_no||''),String(d.f_sana||'')]);
+  const lines=Array.isArray(d.lines)?d.lines:[];
+  const prev=sourceMap.get(id);
+  if(!prev){sourceMap.set(id,{...d,lines:[...lines]});continue}
+  // Preserve missing product variants from the secondary source without counting mirrored rows twice.
+  const signature=l=>JSON.stringify([String(l.nm||'').trim(),String(l.mxik||'').trim(),String(l.bar||l.barcode||'').trim()]);
+  const seen=new Set(prev.lines.map(signature));
+  for(const l of lines){const key=signature(l);if(!seen.has(key)){prev.lines.push(l);seen.add(key)}}
+ }
  const source=[...sourceMap.values()];
  for(const d of source){
   for(const l of (Array.isArray(d.lines)?d.lines:[])){
@@ -969,7 +978,7 @@ function tasnifEditDidoxBarcode(x){
 let tasnifDidoxPage=0,tasnifDidoxQuery='';
 function tasnifDraw(){
  const root=document.getElementById('tasnifResults');if(!root)return;
- const all=tasnifResolveAll().filter(x=>active!==15||!x.barcode),rows=tasnifFiltered(all);const query=JSON.stringify([document.getElementById('tasnifSearch')?.value,document.getElementById('tasnifFilter')?.value]);if(query!==tasnifDidoxQuery){tasnifDidoxPage=0;tasnifDidoxQuery=query}const pages=Math.max(1,Math.ceil(rows.length/300));tasnifDidoxPage=Math.min(tasnifDidoxPage,pages-1);const visible=rows.slice(tasnifDidoxPage*300,(tasnifDidoxPage+1)*300);
+ const all=tasnifResolveAll(),rows=tasnifFiltered(all);const query=JSON.stringify([document.getElementById('tasnifSearch')?.value,document.getElementById('tasnifFilter')?.value]);if(query!==tasnifDidoxQuery){tasnifDidoxPage=0;tasnifDidoxQuery=query}const pages=Math.max(1,Math.ceil(rows.length/300));tasnifDidoxPage=Math.min(tasnifDidoxPage,pages-1);const visible=rows.slice(tasnifDidoxPage*300,(tasnifDidoxPage+1)*300);
  root.innerHTML='<div class="toolbar"><button type="button" class="primary" id="tasnifAutoBind">🔗 Soliq MXIKdan shtrix-kodlarni bog‘lash</button></div><div class="tasnif-stats"><span><b>'+all.length+'</b> mahsulot varianti</span><span><b>'+all.filter(x=>x.mxik).length+'</b> MXIK bor</span><span><b>'+all.filter(x=>x.effectiveBarcode).length+'</b> shtrix-kod bor</span><span><b>'+all.filter(x=>!x.effectiveBarcode).length+'</b> shtrix-kodsiz</span></div><div class="ehf-table-wrap"><table class="ehf-table tasnif-table"><thead><tr><th>№</th><th>Mahsulot nomi</th><th>MXIK</th><th>Shtrix-kod</th><th>Fakturalar soni</th><th>Kimning fakturasidan</th><th>Jami miqdor</th><th>Manba</th><th>Tekshirish</th></tr></thead><tbody>'+visible.map((x,i)=>'<tr><td>'+(tasnifDidoxPage*300+i+1)+'</td><td>'+esc(x.name)+'</td><td>'+esc(x.mxik||'—')+'</td><td>'+esc(x.effectiveBarcode||'—')+'</td><td>'+x.docs+'</td><td>'+esc((x.origins||[]).map(o=>(o.supplier||'Noma’lum ta’minotchi')+(o.supplierInn?' (STIR: '+o.supplierInn+')':'')+' · №'+(o.invoice||'—')+(o.date?' · '+o.date:'')).join('; ')||'—')+'</td><td>'+x.qty.toLocaleString('ru-RU')+'</td><td>'+esc(x.barcodeSource)+'</td><td><button type="button" data-tasnif-edit="'+i+'" title="Shtrix-kodni tuzatish" aria-label="Shtrix-kodni tuzatish" style="background:#fff1f2;color:#b91c1c;border:1px solid #fca5a5;border-radius:8px;padding:7px 11px;font-weight:700;cursor:pointer">❗</button></td></tr>').join('')+'</tbody></table></div><p class="muted">Topildi: '+rows.length+' ta  · Sahifa '+(tasnifDidoxPage+1)+' / '+pages+'. <button id="tdPrev">‹</button> <button id="tdNext">›</button> Soliqdan topilgan shtrix-kodlar lokal nomenklatura mosligi sifatida saqlanadi; asl Didox hujjati o‘zgarmaydi.</p>';document.getElementById('tdPrev').disabled=tasnifDidoxPage===0;document.getElementById('tdNext').disabled=tasnifDidoxPage>=pages-1;document.getElementById('tdPrev').onclick=()=>{tasnifDidoxPage--;tasnifDraw()};document.getElementById('tdNext').onclick=()=>{tasnifDidoxPage++;tasnifDraw()};document.getElementById('tasnifAutoBind').onclick=tasnifAutoBind;root.querySelectorAll('[data-tasnif-edit]').forEach(btn=>btn.onclick=()=>tasnifEditDidoxBarcode(visible[Number(btn.dataset.tasnifEdit)]));root.querySelectorAll('[data-barcode-row]').forEach(el=>el.onchange=async()=>{const x=visible[Number(el.dataset.barcodeRow)];if(!x||!el.value)return;tasnifMatches[JSON.stringify([x.name,x.mxik,x.barcode])]=el.value;try{await persistTasnifMatches()}catch(e){alert('Saqlanmadi: '+e.message);return}tasnifDraw()});
 }
 function tasnifExport(){
