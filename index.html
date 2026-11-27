@@ -1556,7 +1556,7 @@ function dxMatchCircleHtml(id,small=false){
 }
 function dxMatchSetCircle(el,percent,state,label){
  if(!el)return;
- const raw=Math.max(0,Math.min(100,Number(percent)||0)),pct=raw===100?100:Math.min(99,Math.round(raw));
+ const raw=Math.max(0,Math.min(100,Number(percent)||0)),pct=raw===100?100:Math.min(99.99,Math.round(raw*100)/100);
  const neutral=state==='unlinked'||state==='pending';
  const end=raw===100?'#16a34a':neutral?'#94a3b8':'hsl('+raw*1.2+',75%,43%)';
  const start=raw===100?end:neutral?end:'hsl('+Math.max(0,raw*1.2-35)+',78%,48%)';
@@ -1581,9 +1581,10 @@ function dxMatchExcludeCircle(el){
  el.title='Rad etilgan yoki bekor qilingan faktura — moslik foiziga kiritilmaydi';
 }
 let dxDisplayedMatches=new WeakMap();
+function dxPriceSimilarity(a,b){a=Number(a);b=Number(b);if(!Number.isFinite(a)||!Number.isFinite(b)||a<0||b<0)return 0;if(Math.abs(a-b)<=0.01)return 1;return Math.min(a,b)/Math.max(a,b)}
 function dxMatchMetrics(r){
  const lines=r.rows||[],n=lines.length,hasCode=x=>!!(x.code&&x.uprCode&&x.code===x.uprCode);
- return {n,qty:lines.filter(x=>hasCode(x)&&Math.abs(Number(x.didox)-Number(x.upr))<0.000001).length,price:lines.filter(x=>hasCode(x)&&Number(x.didox)>0&&Number(x.upr)>0&&Math.abs(Number(x.didoxPrice)-Number(x.uprPrice))<=0.01).length,linked:!!r.linked};
+ return {n,qty:lines.filter(x=>hasCode(x)&&Math.abs(Number(x.didox)-Number(x.upr))<0.000001).length,price:lines.reduce((sum,x)=>sum+(hasCode(x)&&Number(x.didox)>0&&Number(x.upr)>0?dxPriceSimilarity(x.didoxPrice,x.uprPrice):0),0),linked:!!r.linked};
 }
 function dxRefreshOne(d,g,gi,di,btn){
  if(dxStatus(d).type==='rejected')return;
@@ -1627,10 +1628,7 @@ function dxMatchAutoDraw(groups){
    try{
     let r=dxMatchCache.get(job.d);
     if(!r){r=ehfUprCompare(job.d);dxMatchCache.set(job.d,r)}
-    const lines=r.rows||[],n=lines.length,matched=r.matched||0;
-    const hasCode=x=>!!(x.code&&x.uprCode&&x.code===x.uprCode);
-    const qtyMatched=lines.filter(x=>hasCode(x)&&Math.abs(Number(x.didox)-Number(x.upr))<0.000001).length;
-    const priceMatched=lines.filter(x=>hasCode(x)&&Number(x.didox)>0&&Number(x.upr)>0&&Math.abs(Number(x.didoxPrice)-Number(x.uprPrice))<=0.01).length;
+    const m=dxMatchMetrics(r),n=m.n,qtyMatched=m.qty,priceMatched=m.price;
     const qtyPct=n?100*qtyMatched/n:0,pricePct=n?100*priceMatched/n:0;
     const state=p=>!r.linked?'unlinked':p===100&&n>0?'matched':'check';
     dxMatchSetCircle(document.querySelector('[data-dx-match="qty-'+job.gi+'-'+job.j+'"]'),qtyPct,state(qtyPct),'Soni');
