@@ -1067,7 +1067,14 @@ function ehfUprCompare(d){
  const buyerInn=String(d.b_inn||'').replace(/\D/g,'');
  const normStore=v=>String(v??'').trim().toLocaleLowerCase().replace(/\s+/g,' ');
  const allStoreLinks=storeCompanyRows();
- const storeLinks=buyerInn?allStoreLinks.filter(x=>String(x.inn||'').replace(/\D/g,'')===buyerInn):[];
+ const mappedStores=buyerInn?allStoreLinks.filter(x=>String(x.inn||'').replace(/\D/g,'')===buyerInn):[];
+ const storeToken=v=>String(v??'').normalize('NFKC').toLowerCase().replace(/[–—]/g,'-').replace(/\s*-\s*/g,'-').replace(/\s+/g,' ').trim();
+ const explicit=storeToken(d.storeName||d.store||'');
+ const invoiceText=storeToken(d.f_no);
+ const distinct=new Map(mappedStores.map(x=>[storeToken(x.storeName)||String(x.storeId||''),x]));
+ const named=[...distinct.keys()].filter(n=>n&&(explicit?explicit===n:invoiceText.includes(n)));
+ const selectedStore=named.length===1?named[0]:!explicit&&named.length===0&&distinct.size===1?[...distinct.keys()][0]:'';
+ const storeLinks=selectedStore?mappedStores.filter(x=>(storeToken(x.storeName)||String(x.storeId||''))===selectedStore):[];
  const buyerStores=new Set(storeLinks.flatMap(x=>[normStore(x.storeName),normStore(x.storeId)]).filter(Boolean));
  const hasStoreMap=true;
  const related=buyerStores.size&&linked.length?uprSupplierReceiptCandidates(supplierNames,supplierMainIds).filter(x=>{
@@ -1214,7 +1221,7 @@ function ehfUprCompare(d){
   duplicateClaim?'Bir xil raqam, sotuvchi va xaridorga tegishli boshqa Didox fakturasi mavjud — takroriy kirim xavfi':
   ambiguous?'Shtrix-kod topildi, lekin takroriy kirim, sana yoki miqdor bo‘yicha qo‘lda tekshirish kerak':
   !linked.length?'Ta’minotchi STIR orqali MAIN ta’minotchiga bog‘lanmagan':
-  hasStoreMap&&!buyerStores.size?'Xaridor MCHJ STIRiga do‘kon biriktirilmagan — avtomatik tasdiqlash mumkin emas':
+  hasStoreMap&&!buyerStores.size?'Fakturaning aniq do‘koni aniqlanmadi — do‘kon va MCHJ bog‘lanishini tekshiring':
   expected.some(x=>!x.code)?'Didox nomenklaturasida tasdiqlangan shtrix-kod mosligi yo‘q — nomenklaturani bog‘lang':
   !candidates.length?'Bog‘langan MAIN ta’minotchilar UPR kirimlarida fakturadagi shtrix-kod topilmadi':
   complete?'To‘liq mos':'Shtrix-kod topilgan, lekin miqdor, narx yoki summada farq bor';
