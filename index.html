@@ -922,7 +922,14 @@ function tasnifResolved(x,uprIndex,context){
   tasnifMatches[key]={barcode:verifiedBarcode||'',uprName:chosen.name};
   queueTasnifSave()
  }
- return {...x,uprName:chosen?.name||'',effectiveBarcode:code,barcodeSource:source};
+ // Use the invoice resolver for the same original product and supplier.
+ const invoiceCodes=new Set();
+ for(const inn of new Set((x.origins||[]).map(o=>o.supplierInn||''))){
+  const k=invoiceVerifiedBarcode({nm:x.name,mxik:x.mxik,bar:x.barcode},inn,context?.catalog);
+  if(tasnifBarcode13(k))invoiceCodes.add(k);
+ }
+ const shared=invoiceCodes.size===1?[...invoiceCodes][0]:'';
+ return {...x,uprName:chosen?.name||'',effectiveBarcode:invoiceCodes.size>1?'':shared||code,barcodeSource:invoiceCodes.size>1?'Turli faktura kodlari — tekshirish kerak':shared&&shared!==code?'Faktura solishtirish':source};
 }
 async function tasnifAutoBind(){
  const rows=tasnifRows(),catalog=tasnifUprCatalog(),context={catalog,byName:new Map(catalog.map(x=>[x.key,x])),candidates:new Map()};let added=0,existing=0,ambiguous=0,missing=0;
@@ -940,7 +947,7 @@ async function tasnifAutoBind(){
 function tasnifFiltered(precomputed){
  const q=(document.getElementById('tasnifSearch')?.value||'').toLocaleLowerCase().trim(),filter=document.getElementById('tasnifFilter')?.value||'all';
  const all=precomputed||tasnifResolveAll();
- return all.filter(x=>(!q||[x.name,x.mxik,x.barcode,x.effectiveBarcode].some(v=>String(v||'').toLocaleLowerCase().includes(q)))&&(filter==='all'||filter==='mxik'&&x.mxik||filter==='barcode'&&x.effectiveBarcode||filter==='missing'&&!x.effectiveBarcode));
+ return all.filter(x=>(!q||[x.name,x.mxik,x.barcode,x.effectiveBarcode].some(v=>String(v||'').toLocaleLowerCase().replace(/\s+/g,' ').includes(q.replace(/\s+/g,' '))))&&(filter==='all'||filter==='mxik'&&x.mxik||filter==='barcode'&&x.effectiveBarcode||filter==='missing'&&!x.effectiveBarcode));
 }
 function tasnifResolveAll(){
  const catalog=didoxBarcodeCatalog(),context={catalog,byName:didoxBarcodeNameIndex(),candidates:new Map()};
@@ -1014,12 +1021,12 @@ function uprResolvedBarcode(x){
  }
  return '';
 }
-function invoiceVerifiedBarcode(l,inn){
+function invoiceVerifiedBarcode(l,inn,catalog){
  const nm=String(l.nm||'').trim(),mx=String(l.mxik||'').trim(),raw0=String(l.bar||l.barcode||'').trim();
  const override=tasnifMatches[JSON.stringify([nm,mx,raw0])]||tasnifMatches[JSON.stringify([nm,mx,''])];
  if(override?.manual&&tasnifBarcode13(override.barcode))return String(override.barcode);
  const raw=String(l.bar||l.barcode||'').trim();
- if(/^\d{13}$/.test(raw)&&didoxBarcodeCatalog().some(x=>x.codes.includes(raw)))return raw;
+ if(/^\d{13}$/.test(raw)&&(catalog||didoxBarcodeCatalog()).some(x=>x.codes.includes(raw)))return raw;
  const name=String(l.nm||'').trim(),mxik=String(l.mxik||'').trim();
  const saved=tasnifMatches[JSON.stringify([name,mxik,raw])]||tasnifMatches[JSON.stringify([name,mxik,''])];
  const code=typeof saved==='string'?saved:String(saved?.barcode||'').trim();
