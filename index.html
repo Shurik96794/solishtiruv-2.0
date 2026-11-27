@@ -344,12 +344,15 @@ function didoxBarcodeCatalog(){
 function didoxBarcodeNameIndex(){didoxBarcodeCatalog();return didoxBarcodeCache.byName}
 // Yagona ketma-ketlik: Didox asl kod → Soliq MXIK → nomenklatura mosligi.
 // MXIKda bir nechta kod bo‘lsa taxminiy tanlov qilinmaydi.
+var didoxIdIndex=null;
+function didoxProductIdMatch(name){const ids=[...new Set([...String(name||'').matchAll(/\bID\s*[:№#-]?\s*(\d+)\b/gi)].map(m=>m[1]))];if(!ids.length)return null;if(ids.length!==1)return {code:'',ambiguous:true};if(!didoxIdIndex){didoxIdIndex=new Map();for(const r of barcodeRows){const id=String(r.tovarId??'').trim();if(!id)continue;if(!didoxIdIndex.has(id))didoxIdIndex.set(id,[]);didoxIdIndex.get(id).push(r)}}const rows=didoxIdIndex.get(ids[0])||[],codes=[...new Set(rows.map(r=>String(r.barcode||'').trim()).filter(tasnifBarcode13))];if(codes.length!==1)return {code:'',ambiguous:true};const names=[...new Set(rows.filter(r=>String(r.barcode).trim()===codes[0]).map(r=>String(r.sku||'').trim()).filter(Boolean))];return {code:codes[0],name:names.length===1?names[0]:String(name),source:'Tovar ID → SHTRIX KOD'}}
 function didoxBarcodeStages(l){
  const original=String(l.bar||l.barcode||'').trim();
  const name=String(l.nm||'').trim(),mxik=String(l.mxik||'').trim();
  const override=tasnifMatches[JSON.stringify([name,mxik,original])]||tasnifMatches[JSON.stringify([name,mxik,''])];
  if(override?.manual&&tasnifBarcode13(override.barcode))return {code:String(override.barcode),source:'Qo‘lda tuzatilgan'};
  if(tasnifBarcode13(original))return {code:original,source:'Didox'};
+ const idMatch=didoxProductIdMatch(name);if(idMatch)return idMatch;
 
  const soliq=tasnifSoliqValidCodes(mxik);
  if(soliq.length===1)return {code:soliq[0],source:'Soliq MXIK'};
@@ -771,12 +774,13 @@ function tasnifMatchRows(){
   // Didox kodi 13 xonadan qisqa bo‘lsa, asl kodni saqlagan holda tekshiruvga chiqaramiz.
   if(/^\d{1,12}$/.test(String(x.barcode||'').trim()))return true;
   const codes=tasnifSoliqValidCodes(x.mxik);
-  return codes.length!==1;
+  return !!didoxProductIdMatch(x.name)||codes.length!==1;
  }).map(x=>{
   const key=JSON.stringify([x.name,x.mxik,x.barcode]),nameKey=tasnifNameKey(x.name);
   const saved=tasnifMatches[key],savedName=typeof saved==='object'?saved?.uprName:'';
   const savedUpr=savedName?byName.get(tasnifNameKey(savedName)):null;
   const uprStandardName=tasnifNomenclatureUprName(x.name);
+  const idMatch=!saved?.manual?didoxProductIdMatch(x.name):null;if(idMatch){if(idMatch.code&&(saved?.barcode!==idMatch.code||savedName!==idMatch.name)){tasnifMatches[key]={uprName:idMatch.name,barcode:idMatch.code};tasnifMatchAutoDirty=true}return {...x,key,uprStyleName:idMatch.name||uprStandardName,uprName:idMatch.name||'',uprCodes:idMatch.code?[idMatch.code]:[],effectiveBarcode:idMatch.code,matchPercent:idMatch.code?100:null,status:idMatch.code?'matched':'manual',exact:!!idMatch.code,auto:!!idMatch.code};}
   const universal=tasnifUniversalCandidates(x.name,universalIndex);
   if(!saved?.manual&&universal.length===1){const u=universal[0];if(saved?.barcode!==u.code||savedName!==u.name){tasnifMatches[key]={uprName:u.name,barcode:u.code};tasnifMatchAutoDirty=true}return {...x,key,uprStyleName:u.name,uprName:u.name,uprCodes:[u.code],effectiveBarcode:u.code,matchPercent:100,status:'matched',exact:true,auto:true};}
   if(!saved?.manual&&universal.length>1)return {...x,key,uprStyleName:uprStandardName,uprName:'',uprCodes:universal.map(u=>u.code),effectiveBarcode:'',matchPercent:null,status:'manual',exact:false,auto:false};
@@ -927,6 +931,7 @@ function tasnifResolved(x,uprIndex,context){
  const catalog=context?.catalog||didoxBarcodeCatalog(),byName=context?.byName||new Map(catalog.map(item=>[item.key,item]));
  const saved=tasnifMatches[key],savedCode=typeof saved==='string'?saved:saved?.barcode;
  const savedName=typeof saved==='object'?saved?.uprName:'';
+ const idMatch=!saved?.manual&&!tasnifBarcode13(x.barcode)?didoxProductIdMatch(x.name):null;if(idMatch)return {...x,uprName:idMatch.name||'',effectiveBarcode:idMatch.code,barcodeSource:idMatch.source||'Tovar ID — tekshirish kerak'};
  const nameKey=tasnifNameKey(x.name);let chosen=(savedName&&byName.get(tasnifNameKey(savedName)))||byName.get(nameKey)||byName.get(tasnifNameKey(tasnifUprStyleName(x.name)));
  if(!chosen){if(context?.candidates?.has(nameKey))chosen=context.candidates.get(nameKey);else{chosen=tasnifPhoneCandidate(x.name,catalog)?.item||(!normalizedPhoneBrand(x.name)?tasnifBarcodeNameCandidate(x.name,catalog)?.item:null)||tasnifAutoUprCandidate(tasnifUprStyleName(x.name),catalog)||tasnifAutoUprCandidate(x.name,catalog);context?.candidates?.set(nameKey,chosen)}}
  const codes=chosen?.codes||[];
@@ -1044,6 +1049,7 @@ function invoiceVerifiedBarcode(l,inn,catalog){
  const override=tasnifMatches[JSON.stringify([nm,mx,raw0])]||tasnifMatches[JSON.stringify([nm,mx,''])];
  if(override?.manual&&tasnifBarcode13(override.barcode))return String(override.barcode);
  const raw=String(l.bar||l.barcode||'').trim();
+ if(!tasnifBarcode13(raw)){const idMatch=didoxProductIdMatch(nm);if(idMatch)return idMatch.code;}
  if(/^\d{13}$/.test(raw)&&invoiceCatalogHas(catalog||didoxBarcodeCatalog(),raw))return raw;
  const name=String(l.nm||'').trim(),mxik=String(l.mxik||'').trim();
  const saved=tasnifMatches[JSON.stringify([name,mxik,raw])]||tasnifMatches[JSON.stringify([name,mxik,''])];
@@ -1823,7 +1829,7 @@ function barcodeKey(v){return String(v??'').normalize('NFKC').toUpperCase().repl
 function barcodeNameIndex(){const byPc=new Map(),byId=new Map();for(const x of records[3]||[]){const pc=barcodeKey(x.variantCode),id=String(x.tovarId??'').trim(),name=String(x.product??'').trim();if(!name)continue;if(pc){if(!byPc.has(pc))byPc.set(pc,new Set());byPc.get(pc).add(name)}if(id){if(!byId.has(id))byId.set(id,new Set());byId.get(id).add(name)}}const unique=values=>values&&values.size===1?[...values][0]:'';return {byPc,byId,unique}}
 async function syncUprBarcodeCatalog(rows){const map=new Map();for(const r of barcodeRows){const k=barcodeKey(r.pc);if(!map.has(k))map.set(k,[]);map.get(k).push({...r})}let changed=false;for(const r of rows){if(uprHiddenKmPrefix(r.product)||uprHiddenKmPrefix(r.store))continue;const pc=String(r.variantCode||'').trim(),k=barcodeKey(pc);if(!k)continue;const code=String(r.barcode||'').trim(),valid=/^\d{13}$/.test(code)?code:'';if(!map.has(k)){map.set(k,[{pc,tovarId:String(r.tovarId||''),sku:String(r.sku||''),name:String(r.product||''),barcode:valid}]);changed=true;continue}const group=map.get(k);for(const x of group){for(const [f,v] of [['tovarId',r.tovarId],['sku',r.sku],['name',r.product]])if(!x[f]&&v){x[f]=String(v);changed=true}}if(valid&&!group.some(x=>x.barcode)){group[0].barcode=valid;changed=true}}if(changed){const next=barcodeDedup([...map.values()].flat());await barcodeStore(next);barcodeRows=next;rebuildBarcodeIndex();uprBarcodeIdCache=null;uprLinkCacheSig=null}}
 function barcodeDedup(rows){const groups=new Map();for(const r of rows){const k=barcodeKey(r.pc);if(!k)continue;if(!groups.has(k))groups.set(k,[]);groups.get(k).push(r)}const out=[];for(const g of groups.values()){const manual=g.filter(r=>r.manual&&r.barcode),source=manual.length?manual:g,byCode=new Map();for(const r of source){const code=String(r.barcode||'').trim();if(!byCode.has(code))byCode.set(code,{...r,barcode:code});else{const x=byCode.get(code);for(const f of ['tovarId','sku','name'])if(!x[f]&&r[f])x[f]=r[f]}}if(byCode.size>1)byCode.delete('');for(const r of byCode.values()){for(const f of ['tovarId','sku','name'])if(!r[f])r[f]=g.find(x=>x[f])?.[f]||'';out.push(r)}}return out}
-function rebuildBarcodeIndex(){didoxBarcodeCache={};barcodeIndex=new Map();for(const row of barcodeRows){const k=barcodeKey(row.pc);if(!k)continue;if(!barcodeIndex.has(k))barcodeIndex.set(k,new Set());if(row.barcode)barcodeIndex.get(k).add(String(row.barcode))}}
+function rebuildBarcodeIndex(){didoxIdIndex=null;didoxBarcodeCache={};barcodeIndex=new Map();for(const row of barcodeRows){const k=barcodeKey(row.pc);if(!k)continue;if(!barcodeIndex.has(k))barcodeIndex.set(k,new Set());if(row.barcode)barcodeIndex.get(k).add(String(row.barcode))}}
 function barcodeMatch(pc){const codes=barcodeIndex.get(barcodeKey(pc));if(!codes||!codes.size)return {status:'missing',barcode:''};if(codes.size>1)return {status:'conflict',barcode:''};return {status:'linked',barcode:[...codes][0]}}
 function barcodeDisplay(row){
  const m=barcodeMatch(row?.variantCode);
